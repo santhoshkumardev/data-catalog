@@ -2,6 +2,8 @@
 
 An enterprise-grade metadata management and data governance platform. It provides a centralized hub for discovering, understanding, and governing data assets across multiple databases and data systems. Teams use it to browse database hierarchies, search for tables and columns, trace data lineage, enforce governance policies, collaborate through comments and documentation, and run ad-hoc queries — all from a single web interface.
 
+![Home Page](docs/images/home-page.png)
+
 ## Core Capabilities
 
 ### 1. Metadata Management
@@ -24,6 +26,8 @@ Tables are not the only database objects. The catalog distinguishes between:
 - **Synonyms** — aliases pointing to other database objects (orange icon)
 
 Views and materialized views include a "Definition" tab displaying the underlying SQL.
+
+![Exploring Objects — schema page with type-aware icons and badges](docs/images/exploring-objects.png)
 
 **Column-Level Detail**
 
@@ -65,6 +69,8 @@ The lineage system tracks upstream and downstream data flows between tables acro
 - **Manual edge creation** — stewards can create lineage edges by searching for source and target tables
 - **Edge deletion** — remove incorrect or outdated lineage relationships
 - **Batch ingestion** — bulk-load lineage edges via the ingest API
+
+![Data Lineage — upstream and downstream flow visualization](docs/images/data-lineage.png)
 
 ### 4. Data Governance
 
@@ -140,6 +146,8 @@ A built-in knowledge base for data documentation:
 - SME (Subject Matter Expert) contact information
 - Full-text searchable through Meilisearch
 
+![Process Articles — rich-text documentation with tags](docs/images/process-articles.png)
+
 **Business Glossary**
 
 Define and standardize business terminology:
@@ -149,6 +157,8 @@ Define and standardize business terminology:
 - Workflow support with draft and approved statuses
 - Searchable and browsable through a dedicated tree sidebar
 
+![Business Glossary — standardized term definitions with status badges](docs/images/glossary.png)
+
 ### 7. Query Library
 
 Save, organize, and share SQL queries:
@@ -157,6 +167,8 @@ Save, organize, and share SQL queries:
 - Edit SQL in a syntax-highlighted editor (CodeMirror)
 - Associate queries with SME contacts
 - Browse queries in a sidebar tree organized by database
+
+![Published SQL Queries — saved query with syntax-highlighted SQL](docs/images/published-sql-queries.png)
 
 ### 8. Query Runner
 
