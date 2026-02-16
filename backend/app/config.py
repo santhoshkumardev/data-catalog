@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     auth_mode: str = "basic"                # "sso" or "basic"
     sso_header_email: str = "X-Shib-mail"
     sso_header_name: str = "X-Shib-displayName"
+    sso_header_groups: str = "X-Shib-Groups"
+    sso_admin_group: str = ""
+    sso_steward_group: str = ""
     sso_default_role: str = "viewer"
 
     ingest_api_key: str = "dev-ingest-key"

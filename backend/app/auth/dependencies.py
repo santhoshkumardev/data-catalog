@@ -35,6 +35,20 @@ async def _resolve_user_from_token(
     return user
 
 
+def resolve_sso_role(groups_header: str | None) -> str | None:
+    """Map semicolon-delimited Shibboleth groups header to application role."""
+    if not groups_header:
+        return None
+    groups = [g.strip() for g in groups_header.split(";") if g.strip()]
+    if not groups:
+        return None
+    if settings.sso_admin_group and settings.sso_admin_group in groups:
+        return "admin"
+    if settings.sso_steward_group and settings.sso_steward_group in groups:
+        return "steward"
+    return "viewer"
+
+
 async def _resolve_user_from_sso_headers(
     request: Request,
     db: AsyncSession,
@@ -45,6 +59,8 @@ async def _resolve_user_from_sso_headers(
         raise exc
 
     display_name = request.headers.get(settings.sso_header_name) or email
+    groups_header = request.headers.get(settings.sso_header_groups)
+    group_role = resolve_sso_role(groups_header)
 
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
@@ -54,13 +70,16 @@ async def _resolve_user_from_sso_headers(
             id=uuid.uuid4(),
             email=email,
             name=display_name,
-            role=settings.sso_default_role,
+            role=group_role or settings.sso_default_role,
             oauth_provider="shibboleth",
             oauth_sub=email,
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
+    else:
+        if group_role is not None:
+            user.role = group_role
 
     user.last_login = datetime.now(timezone.utc)
     await db.commit()

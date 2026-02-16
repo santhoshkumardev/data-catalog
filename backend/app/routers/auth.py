@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, resolve_sso_role
 from app.auth.jwt import create_access_token, decode_access_token
 from app.config import settings
 from app.database import get_db
@@ -95,6 +95,8 @@ async def sso_check(request: Request, db: AsyncSession = Depends(get_db)):
         return {"sso": False}
 
     display_name = request.headers.get(settings.sso_header_name) or email
+    groups_header = request.headers.get(settings.sso_header_groups)
+    group_role = resolve_sso_role(groups_header)
 
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
@@ -104,7 +106,7 @@ async def sso_check(request: Request, db: AsyncSession = Depends(get_db)):
             id=uuid.uuid4(),
             email=email,
             name=display_name,
-            role=settings.sso_default_role,
+            role=group_role or settings.sso_default_role,
             oauth_provider="shibboleth",
             oauth_sub=email,
         )
@@ -113,6 +115,8 @@ async def sso_check(request: Request, db: AsyncSession = Depends(get_db)):
         await db.refresh(user)
     else:
         user.name = display_name
+        if group_role is not None:
+            user.role = group_role
 
     user.last_login = datetime.now(timezone.utc)
     await db.commit()
