@@ -28,6 +28,9 @@ if len(sys.argv) > 1:
 else:
     EDW_FILE = os.environ.get("EDW_FILE", "/app/EDW.json")
 
+CLI_DB_NAME = sys.argv[2] if len(sys.argv) > 2 else None
+CLI_DB_TITLE = sys.argv[3] if len(sys.argv) > 3 else None
+
 
 def strip_html(html: str) -> str:
     """Remove HTML tags and return plain text (best-effort)."""
@@ -106,8 +109,8 @@ def main():
         print("ERROR: No database-level record found in EDW.json")
         return
 
-    db_name = "edw"
-    db_title = db_record.get("title", "EDW")
+    db_name = CLI_DB_NAME or "edw"
+    db_title = CLI_DB_TITLE or db_record.get("title", "EDW")
     db_desc = strip_html(db_record.get("description", ""))
     print(f"Database: {db_title} ({db_name})")
     print(f"  Schemas: {len(schemas)}")
