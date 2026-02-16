@@ -6,6 +6,7 @@ export interface DbConnection {
   db_type: string;
   description?: string;
   tags?: string[];
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -16,6 +17,7 @@ export interface Schema {
   name: string;
   description?: string;
   tags?: string[];
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -31,6 +33,7 @@ export interface Table {
   row_count?: number;
   object_type?: string;
   view_definition?: string;
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -45,8 +48,23 @@ export interface Column {
   title?: string;
   description?: string;
   tags?: string[];
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface BreadcrumbContext {
+  database: DbConnection;
+  schema_obj: Schema;
+}
+
+export interface TableWithContext extends Table {
+  context: BreadcrumbContext;
+}
+
+export interface ColumnWithContext extends Column {
+  context: BreadcrumbContext;
+  table: Table;
 }
 
 export interface Paginated<T> {
@@ -95,8 +113,8 @@ export const patchDatabase = (id: string, data: { description?: string; tags?: s
   api.patch<DbConnection>(`/api/v1/databases/${id}`, data).then((r) => r.data);
 
 // Schemas
-export const getSchemas = (dbId: string, page = 1, size = 20) =>
-  api.get<Paginated<Schema>>(`/api/v1/databases/${dbId}/schemas`, { params: { page, size } }).then((r) => r.data);
+export const getSchemas = (dbId: string, page = 1, size = 20, include_deleted = false) =>
+  api.get<Paginated<Schema>>(`/api/v1/databases/${dbId}/schemas`, { params: { page, size, include_deleted } }).then((r) => r.data);
 
 export const getSchema = (id: string) =>
   api.get<Schema>(`/api/v1/schemas/${id}`).then((r) => r.data);
@@ -105,8 +123,8 @@ export const patchSchema = (id: string, data: { description?: string; tags?: str
   api.patch<Schema>(`/api/v1/schemas/${id}`, data).then((r) => r.data);
 
 // Tables
-export const getTables = (schemaId: string, page = 1, size = 20) =>
-  api.get<Paginated<Table>>(`/api/v1/schemas/${schemaId}/tables`, { params: { page, size } }).then((r) => r.data);
+export const getTables = (schemaId: string, page = 1, size = 20, include_deleted = false) =>
+  api.get<Paginated<Table>>(`/api/v1/schemas/${schemaId}/tables`, { params: { page, size, include_deleted } }).then((r) => r.data);
 
 export const getTable = (id: string) =>
   api.get<Table>(`/api/v1/tables/${id}`).then((r) => r.data);
@@ -120,8 +138,18 @@ export const patchTable = (
 export const getColumns = (tableId: string, page = 1, size = 100) =>
   api.get<Paginated<Column>>(`/api/v1/tables/${tableId}/columns`, { params: { page, size } }).then((r) => r.data);
 
+export const getColumn = (id: string) =>
+  api.get<Column>(`/api/v1/columns/${id}`).then((r) => r.data);
+
 export const patchColumn = (id: string, data: { description?: string; tags?: string[]; title?: string }) =>
   api.patch<Column>(`/api/v1/columns/${id}`, data).then((r) => r.data);
+
+// Context (single-request breadcrumb fetching)
+export const getTableContext = (id: string) =>
+  api.get<TableWithContext>(`/api/v1/tables/${id}/context`).then((r) => r.data);
+
+export const getColumnContext = (id: string) =>
+  api.get<ColumnWithContext>(`/api/v1/columns/${id}/context`).then((r) => r.data);
 
 // Search (Meilisearch-backed)
 export const search = (q: string, type = "all", page = 1, size = 20) =>
@@ -178,9 +206,26 @@ export interface LineageNode {
   is_catalog_table: boolean;
   table_id?: string;
   edge_id?: string;
+  has_annotation?: boolean;
   has_more_upstream: boolean;
   has_more_downstream: boolean;
   children: LineageNode[];
+}
+
+export interface EdgeAnnotation {
+  integration_description?: string | null;
+  integration_method?: string | null;
+  integration_schedule?: string | null;
+  integration_notes?: string | null;
+  integration_updated_by?: string | null;
+  integration_updated_at?: string | null;
+}
+
+export interface EdgeAnnotationUpdate {
+  integration_description?: string | null;
+  integration_method?: string | null;
+  integration_schedule?: string | null;
+  integration_notes?: string | null;
 }
 
 export interface LineageGraph {
@@ -217,6 +262,12 @@ export const searchTablesForLineage = (q: string, limit = 10) =>
 
 export const expandLineageNode = (dbName: string, tableName: string, direction: "upstream" | "downstream", levels = 1) =>
   api.get<LineageNode[]>("/api/v1/lineage/expand", { params: { db_name: dbName, table_name: tableName, direction, levels } }).then((r) => r.data);
+
+export const getEdgeAnnotation = (edgeId: string) =>
+  api.get<EdgeAnnotation>(`/api/v1/lineage/${edgeId}/annotation`).then((r) => r.data);
+
+export const updateEdgeAnnotation = (edgeId: string, data: EdgeAnnotationUpdate) =>
+  api.put<EdgeAnnotation>(`/api/v1/lineage/${edgeId}/annotation`, data).then((r) => r.data);
 
 // Articles
 export interface AttachmentMeta {
@@ -286,6 +337,46 @@ export interface QueryRunResult {
 
 export const executeQuery = (sql: string, max_rows = 100) =>
   api.post<QueryRunResult>("/api/v1/query-runner/execute", { sql, max_rows }).then((r) => r.data);
+
+// Groups
+export interface GroupDoc {
+  id: string;
+  name: string;
+  ad_group_name?: string;
+  app_role: string;
+  description?: string;
+  member_count: number;
+  created_at: string;
+}
+
+export interface GroupMember {
+  id: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  synced_at: string;
+}
+
+export const getGroups = () =>
+  api.get<GroupDoc[]>("/api/v1/admin/groups").then((r) => r.data);
+
+export const createGroup = (data: { name: string; ad_group_name?: string; app_role: string; description?: string }) =>
+  api.post<GroupDoc>("/api/v1/admin/groups", data).then((r) => r.data);
+
+export const patchGroup = (id: string, data: { name?: string; ad_group_name?: string; app_role?: string; description?: string }) =>
+  api.patch<GroupDoc>(`/api/v1/admin/groups/${id}`, data).then((r) => r.data);
+
+export const deleteGroup = (id: string) =>
+  api.delete(`/api/v1/admin/groups/${id}`);
+
+export const getGroupMembers = (groupId: string) =>
+  api.get<GroupMember[]>(`/api/v1/admin/groups/${groupId}/members`).then((r) => r.data);
+
+export const addGroupMember = (groupId: string, userId: string) =>
+  api.post<GroupMember>(`/api/v1/admin/groups/${groupId}/members`, { user_id: userId }).then((r) => r.data);
+
+export const removeGroupMember = (groupId: string, userId: string) =>
+  api.delete(`/api/v1/admin/groups/${groupId}/members/${userId}`);
 
 // Audit Log
 export interface AuditLogEntry {

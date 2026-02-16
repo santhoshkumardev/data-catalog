@@ -1,30 +1,44 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Layers, Table2, Eye, Link as LinkIcon } from "lucide-react";
-import { getSchema, getDatabase, getTables, patchSchema, type Schema, type DbConnection, type Table } from "../api/catalog";
+import { getSchema, getDatabase, getTables, patchSchema } from "../api/catalog";
 import { trackView } from "../api/analytics";
 import { useAuth } from "../auth/AuthContext";
 import Breadcrumb from "../components/Breadcrumb";
 import InlineEdit from "../components/InlineEdit";
 import TagEditor from "../components/TagEditor";
-import FavoriteButton from "../components/FavoriteButton";
+
 import CommentSection from "../components/CommentSection";
+import StewardSection from "../components/StewardSection";
+import EndorsementBadge from "../components/EndorsementBadge";
 
 export default function SchemaDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { isEditor } = useAuth();
-  const [schema, setSchema] = useState<Schema | null>(null);
-  const [db, setDb] = useState<DbConnection | null>(null);
-  const [tables, setTables] = useState<Table[]>([]);
+
+  const { data: schema, refetch: refetchSchema } = useQuery({
+    queryKey: ["schema", id],
+    queryFn: () => getSchema(id!),
+    enabled: !!id,
+  });
+
+  const { data: db } = useQuery({
+    queryKey: ["database", schema?.connection_id],
+    queryFn: () => getDatabase(schema!.connection_id),
+    enabled: !!schema?.connection_id,
+  });
+
+  const { data: tablesData } = useQuery({
+    queryKey: ["tables", id],
+    queryFn: () => getTables(id!, 1, 100, true),
+    enabled: !!id,
+  });
+
+  const tables = tablesData?.items ?? [];
 
   useEffect(() => {
-    if (!id) return;
-    getSchema(id).then((s) => {
-      setSchema(s);
-      getDatabase(s.connection_id).then(setDb);
-    });
-    getTables(id, 1, 100).then((r) => setTables(r.items));
-    trackView("schema", id);
+    if (id) trackView("schema", id);
   }, [id]);
 
   if (!schema || !db) return <div className="text-gray-400">Loading...</div>;
@@ -36,16 +50,18 @@ export default function SchemaDetailPage() {
         <div className="flex items-center gap-3 mb-4">
           <Layers size={24} className="text-purple-500" />
           <h1 className="text-xl font-bold">{schema.name}</h1>
-          <FavoriteButton entityType="schema" entityId={id!} />
+          <EndorsementBadge entityType="schema" entityId={id!} />
+
         </div>
         <div className="mb-4">
           <div className="text-xs text-gray-400 mb-1">Description</div>
-          <InlineEdit value={schema.description || ""} onSave={async (v) => { const u = await patchSchema(id!, { description: v }); setSchema(u); }} multiline canEdit={isEditor} />
+          <InlineEdit value={schema.description || ""} onSave={async (v) => { await patchSchema(id!, { description: v }); refetchSchema(); }} multiline canEdit={isEditor} />
         </div>
         <div>
           <div className="text-xs text-gray-400 mb-1">Tags</div>
-          <TagEditor tags={schema.tags || []} onChange={async (tags) => { const u = await patchSchema(id!, { tags }); setSchema(u); }} canEdit={isEditor} />
+          <TagEditor tags={schema.tags || []} onChange={async (tags) => { await patchSchema(id!, { tags }); refetchSchema(); }} canEdit={isEditor} />
         </div>
+        <StewardSection entityType="schema" entityId={id!} />
       </div>
 
       <h2 className="text-lg font-semibold mb-3">Objects ({tables.length})</h2>
@@ -67,14 +83,21 @@ export default function SchemaDetailPage() {
               default: return null;
             }
           })();
+          const isDeleted = !!t.deleted_at;
           return (
-            <Link key={t.id} to={`/tables/${t.id}`} className="flex items-center justify-between bg-white border rounded p-3 hover:shadow-sm">
+            <Link key={t.id} to={`/tables/${t.id}`} className={`flex items-center justify-between bg-white border rounded p-3 hover:shadow-sm ${isDeleted ? "opacity-50" : ""}`}>
               <div className="flex items-center gap-2">
                 {icon}
-                <span className="font-medium">{t.name}</span>
+                <span className={`font-medium ${isDeleted ? "line-through" : ""}`}>{t.name}</span>
+                {!isDeleted && <EndorsementBadge entityType="table" entityId={t.id} />}
                 {badge}
+                {isDeleted && (
+                  <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                    Removed {new Date(t.deleted_at!).toLocaleDateString()}
+                  </span>
+                )}
               </div>
-              {t.row_count != null && <span className="text-xs text-gray-400">{t.row_count.toLocaleString()} rows</span>}
+              {t.row_count != null && !isDeleted && <span className="text-xs text-gray-400">{t.row_count.toLocaleString()} rows</span>}
             </Link>
           );
         })}

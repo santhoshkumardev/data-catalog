@@ -87,6 +87,64 @@ class ResourcePermissionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ─── Stewardship ────────────────────────────────────────────────────────────
+
+class StewardAssign(BaseModel):
+    user_id: uuid.UUID
+    entity_type: str
+    entity_id: str
+
+
+class StewardOut(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    user_name: str
+    user_email: str
+    entity_type: str
+    entity_id: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ─── Endorsement ────────────────────────────────────────────────────────────
+
+class EndorsementCreate(BaseModel):
+    entity_type: str
+    entity_id: str
+    status: str  # endorsed, warned, deprecated
+    comment: str | None = None
+
+
+class EndorsementOut(BaseModel):
+    id: uuid.UUID
+    entity_type: str
+    entity_id: str
+    status: str
+    comment: str | None
+    endorsed_by: uuid.UUID | None
+    endorser_name: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ─── Endorsement Batch ─────────────────────────────────────────────────────
+
+class EndorsementKey(BaseModel):
+    entity_type: str
+    entity_id: str
+
+
+class EndorsementBatchRequest(BaseModel):
+    keys: list[EndorsementKey]
+
+
+class EndorsementBatchResponse(BaseModel):
+    results: dict[str, EndorsementOut | None]
+
+
 # ─── Column Profiling ────────────────────────────────────────────────────────
 
 class ColumnProfileCreate(BaseModel):

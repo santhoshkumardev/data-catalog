@@ -1,27 +1,26 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Table2, Key, Eye, Layers, Link as LinkIcon } from "lucide-react";
-import { getTable, getSchema, getDatabase, getColumns, patchTable, patchColumn, type Table, type Schema, type DbConnection, type Column } from "../api/catalog";
+import { getTableContext, getColumns, patchTable, patchColumn, type Column } from "../api/catalog";
 import { getClassification, type Classification } from "../api/governance";
 import { trackView } from "../api/analytics";
 import { useAuth } from "../auth/AuthContext";
 import Breadcrumb from "../components/Breadcrumb";
 import InlineEdit from "../components/InlineEdit";
 import TagEditor from "../components/TagEditor";
-import FavoriteButton from "../components/FavoriteButton";
+
 import ClassificationBadge from "../components/ClassificationBadge";
 import LineageView from "../components/LineageView";
 import CommentSection from "../components/CommentSection";
 import VersionHistory from "../components/VersionHistory";
 import ProfilingStats from "../components/ProfilingStats";
+import StewardSection from "../components/StewardSection";
+import EndorsementBadge from "../components/EndorsementBadge";
 
 export default function TableDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { isEditor } = useAuth();
-  const [table, setTable] = useState<Table | null>(null);
-  const [schema, setSchema] = useState<Schema | null>(null);
-  const [db, setDb] = useState<DbConnection | null>(null);
-  const [columns, setColumns] = useState<Column[]>([]);
   const [classification, setClassification] = useState<Classification | null>(null);
   const [tab, setTab] = useState<"columns" | "lineage" | "definition" | "comments">("columns");
   const [expandedCol, setExpandedCol] = useState<string | null>(null);
@@ -29,21 +28,31 @@ export default function TableDetailPage() {
   const [colPage, setColPage] = useState(1);
   const COL_PAGE_SIZE = 25;
 
+  const { data: ctx, refetch: refetchCtx } = useQuery({
+    queryKey: ["tableContext", id],
+    queryFn: () => getTableContext(id!),
+    enabled: !!id,
+  });
+
+  const { data: columnsData, refetch: refetchColumns } = useQuery({
+    queryKey: ["columns", id],
+    queryFn: () => getColumns(id!, 1, 200),
+    enabled: !!id,
+  });
+
+  const columns = columnsData?.items ?? [];
+
   useEffect(() => {
     if (!id) return;
-    getTable(id).then((t) => {
-      setTable(t);
-      getSchema(t.schema_id).then((s) => {
-        setSchema(s);
-        getDatabase(s.connection_id).then(setDb);
-      });
-    });
-    getColumns(id, 1, 200).then((r) => setColumns(r.items));
     getClassification("table", id).then(setClassification).catch(() => {});
     trackView("table", id);
   }, [id]);
 
-  if (!table || !schema || !db) return <div className="text-gray-400">Loading...</div>;
+  if (!ctx) return <div className="text-gray-400">Loading...</div>;
+
+  const table = ctx;
+  const schema = ctx.context.schema_obj;
+  const db = ctx.context.database;
 
   const isView = table.object_type === "view" || table.object_type === "materialized_view";
   const objectTypeIcon = (() => {
@@ -72,23 +81,30 @@ export default function TableDetailPage() {
         { label: table.name },
       ]} />
 
-      <div className="bg-white rounded-lg border p-6 mb-6">
+      {table.deleted_at && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 flex items-center gap-2">
+          <span className="text-red-600 text-sm font-medium">This object was removed from source on {new Date(table.deleted_at).toLocaleDateString()}</span>
+        </div>
+      )}
+
+      <div className={`bg-white rounded-lg border p-6 mb-6 ${table.deleted_at ? "opacity-60" : ""}`}>
         <div className="flex items-center gap-3 mb-4">
           {objectTypeIcon}
           <h1 className="text-xl font-bold">{table.name}</h1>
+          <EndorsementBadge entityType="table" entityId={id!} />
           {objectTypeBadge}
           {classification && <ClassificationBadge level={classification.level} />}
           {table.row_count != null && <span className="text-sm text-gray-400">{table.row_count.toLocaleString()} rows</span>}
-          <FavoriteButton entityType="table" entityId={id!} />
+
         </div>
         <div className="grid grid-cols-2 gap-6">
           <div>
             <div className="text-xs text-gray-400 mb-1">Description</div>
-            <InlineEdit value={table.description || ""} onSave={async (v) => { const u = await patchTable(id!, { description: v }); setTable(u); }} multiline canEdit={isEditor} />
+            <InlineEdit value={table.description || ""} onSave={async (v) => { await patchTable(id!, { description: v }); refetchCtx(); }} multiline canEdit={isEditor} />
           </div>
           <div>
             <div className="text-xs text-gray-400 mb-1">Tags</div>
-            <TagEditor tags={table.tags || []} onChange={async (tags) => { const u = await patchTable(id!, { tags }); setTable(u); }} canEdit={isEditor} />
+            <TagEditor tags={table.tags || []} onChange={async (tags) => { await patchTable(id!, { tags }); refetchCtx(); }} canEdit={isEditor} />
             {table.sme_name && (
               <div className="mt-3 text-sm text-gray-600">
                 <span className="text-xs text-gray-400">SME: </span>{table.sme_name}
@@ -97,6 +113,7 @@ export default function TableDetailPage() {
             )}
           </div>
         </div>
+        <StewardSection entityType="table" entityId={id!} />
       </div>
 
       <div className="flex gap-4 border-b mb-4">
@@ -137,16 +154,20 @@ export default function TableDetailPage() {
                   {pagedColumns.map((col) => (
                     <tr key={col.id} className="border-b hover:bg-gray-50">
                       <td className="px-4 py-2">
-                        <button onClick={() => setExpandedCol(expandedCol === col.id ? null : col.id)} className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5">
                           {col.is_primary_key && <Key size={12} className="text-amber-500" />}
-                          <span className="font-mono text-sm">{col.name}</span>
+                          <Link to={`/columns/${col.id}`} className="font-mono text-sm text-blue-600 hover:underline">{col.name}</Link>
+                          <EndorsementBadge entityType="column" entityId={col.id} />
+                        </div>
+                        <button onClick={() => setExpandedCol(expandedCol === col.id ? null : col.id)} className="text-xs text-gray-400 hover:text-blue-500 mt-0.5">
+                          {expandedCol === col.id ? "Hide profiling" : "Show profiling"}
                         </button>
                         {expandedCol === col.id && <ProfilingStats columnId={col.id} />}
                       </td>
                       <td className="px-4 py-2">
                         <InlineEdit
                           value={col.title || ""}
-                          onSave={async (v) => { const u = await patchColumn(col.id, { title: v }); setColumns((prev) => prev.map((c) => c.id === col.id ? u : c)); }}
+                          onSave={async (v) => { await patchColumn(col.id, { title: v }); refetchColumns(); }}
                           canEdit={isEditor}
                         />
                       </td>
@@ -155,7 +176,7 @@ export default function TableDetailPage() {
                       <td className="px-4 py-2">
                         <InlineEdit
                           value={col.description || ""}
-                          onSave={async (v) => { const u = await patchColumn(col.id, { description: v }); setColumns((prev) => prev.map((c) => c.id === col.id ? u : c)); }}
+                          onSave={async (v) => { await patchColumn(col.id, { description: v }); refetchColumns(); }}
                           canEdit={isEditor}
                         />
                       </td>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight, ChevronDown, Database, Layers, Table2, Eye, Link as LinkIcon } from "lucide-react";
 import { getDatabases, getSchemas, getTables, type DbConnection, type Schema, type Table } from "../api/catalog";
+import { useEndorsement } from "../hooks/useEndorsement";
 
 interface SchemaState {
   tables: Table[];
@@ -15,6 +16,13 @@ interface DbState {
   schemas: Schema[];
   schemaStates: Record<string, SchemaState>;
   loading: boolean;
+}
+
+function EndorsementDot({ entityType, entityId }: { entityType: string; entityId: string }) {
+  const { data } = useEndorsement(entityType, entityId);
+  if (!data) return null;
+  const color = data.status === "endorsed" ? "bg-green-400" : data.status === "warned" ? "bg-yellow-400" : "bg-red-400";
+  return <span className={`inline-block w-1.5 h-1.5 rounded-full ${color} shrink-0`} title={data.status} />;
 }
 
 export default function DatabaseTree({ filter }: { filter: string }) {
@@ -34,7 +42,7 @@ export default function DatabaseTree({ filter }: { filter: string }) {
       if (d.expanded && d.schemas.length === 0) {
         d.loading = true;
         copy[idx] = d;
-        getSchemas(d.db.id, 1, 50).then((res) =>
+        getSchemas(d.db.id, 1, 50, true).then((res) =>
           setDbs((p) => {
             const c = [...p];
             c[idx] = { ...c[idx], schemas: res.items, loading: false };
@@ -57,7 +65,7 @@ export default function DatabaseTree({ filter }: { filter: string }) {
         next.loading = true;
         d.schemaStates[schemaId] = next;
         copy[dbIdx] = d;
-        getTables(schemaId, 1, 50).then((res) =>
+        getTables(schemaId, 1, 50, true).then((res) =>
           setDbs((p) => {
             const c = [...p];
             const dd = { ...c[dbIdx], schemaStates: { ...c[dbIdx].schemaStates } };
@@ -87,6 +95,7 @@ export default function DatabaseTree({ filter }: { filter: string }) {
             </button>
             <Database size={14} className="text-blue-400 shrink-0" />
             <Link to={`/databases/${d.db.id}`} className="truncate hover:text-white">{d.db.name}</Link>
+            <EndorsementDot entityType="database" entityId={d.db.id} />
           </div>
           {d.expanded && (
             <div className="ml-4">
@@ -100,7 +109,8 @@ export default function DatabaseTree({ filter }: { filter: string }) {
                         {ss?.expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                       </button>
                       <Layers size={14} className="text-purple-400 shrink-0" />
-                      <Link to={`/schemas/${s.id}`} className="truncate hover:text-white">{s.name}</Link>
+                      <Link to={`/schemas/${s.id}`} className={`truncate hover:text-white ${s.deleted_at ? "line-through opacity-50" : ""}`}>{s.name}</Link>
+                      <EndorsementDot entityType="schema" entityId={s.id} />
                     </div>
                     {ss?.expanded && (
                       <div className="ml-4">
@@ -115,9 +125,10 @@ export default function DatabaseTree({ filter }: { filter: string }) {
                             }
                           })();
                           return (
-                            <Link key={t.id} to={`/tables/${t.id}`} className="flex items-center gap-1 px-2 py-1 hover:bg-gray-800 rounded">
+                            <Link key={t.id} to={`/tables/${t.id}`} className={`flex items-center gap-1 px-2 py-1 hover:bg-gray-800 rounded ${t.deleted_at ? "opacity-50" : ""}`}>
                               {icon}
-                              <span className="truncate">{t.name}</span>
+                              <span className={`truncate ${t.deleted_at ? "line-through" : ""}`}>{t.name}</span>
+                              <EndorsementDot entityType="table" entityId={t.id} />
                             </Link>
                           );
                         })}

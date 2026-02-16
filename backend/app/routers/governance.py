@@ -8,11 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user, require_steward
 from app.database import get_db
-from app.models.governance import ApprovalRequest, DataClassification, ResourcePermission
+from app.models.governance import ApprovalRequest, DataClassification, Endorsement, ResourcePermission
 from app.models.user import User
+from sqlalchemy.orm import selectinload
+from sqlalchemy import tuple_
+
 from app.schemas.governance import (
     ApprovalCreate, ApprovalOut, ApprovalReview, ClassificationCreate, ClassificationOut,
+    EndorsementBatchRequest, EndorsementBatchResponse, EndorsementCreate, EndorsementOut,
     PaginatedApprovals, ResourcePermissionCreate, ResourcePermissionOut,
+    StewardAssign, StewardOut,
 )
 from app.services.audit import log_action
 
@@ -207,3 +212,210 @@ async def revoke_permission(
         raise HTTPException(status_code=404, detail="Permission not found")
     await db.delete(perm)
     await db.commit()
+
+
+# ─── User Lookup (for steward/admin assignment dropdowns) ──────────────────
+
+@router.get("/users", response_model=list[dict])
+async def list_users_for_assignment(
+    db: AsyncSession = Depends(get_db), _: User = Depends(require_steward),
+):
+    """Lightweight user list for steward assignment dropdowns. Requires steward role."""
+    rows = (await db.execute(select(User).order_by(User.name))).scalars().all()
+    return [{"id": str(r.id), "name": r.name, "email": r.email} for r in rows]
+
+
+# ─── Stewardship ────────────────────────────────────────────────────────────
+
+async def _is_steward_or_admin(db: AsyncSession, user: User, entity_type: str, entity_id: str) -> bool:
+    if user.role == "admin":
+        return True
+    perm = (await db.execute(
+        select(ResourcePermission).where(
+            ResourcePermission.user_id == user.id,
+            ResourcePermission.entity_type == entity_type,
+            ResourcePermission.entity_id == entity_id,
+            ResourcePermission.role == "steward",
+        )
+    )).scalar_one_or_none()
+    return perm is not None
+
+
+@router.get("/stewards/{entity_type}/{entity_id}", response_model=list[StewardOut])
+async def get_stewards(
+    entity_type: str, entity_id: str,
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user),
+):
+    rows = (await db.execute(
+        select(ResourcePermission).where(
+            ResourcePermission.entity_type == entity_type,
+            ResourcePermission.entity_id == entity_id,
+            ResourcePermission.role == "steward",
+        )
+    )).scalars().all()
+    items = []
+    for row in rows:
+        await db.refresh(row, ["user"])
+        items.append(StewardOut(
+            id=row.id, user_id=row.user_id, user_name=row.user.name,
+            user_email=row.user.email, entity_type=row.entity_type,
+            entity_id=row.entity_id, created_at=row.created_at,
+        ))
+    return items
+
+
+@router.post("/stewards", response_model=StewardOut, status_code=201)
+async def assign_steward(
+    payload: StewardAssign,
+    db: AsyncSession = Depends(get_db), current_user: User = Depends(require_steward),
+):
+    # Check user exists
+    target_user = (await db.execute(select(User).where(User.id == payload.user_id))).scalar_one_or_none()
+    if target_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    # Check not already steward
+    existing = (await db.execute(
+        select(ResourcePermission).where(
+            ResourcePermission.user_id == payload.user_id,
+            ResourcePermission.entity_type == payload.entity_type,
+            ResourcePermission.entity_id == payload.entity_id,
+            ResourcePermission.role == "steward",
+        )
+    )).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail="User is already a steward of this entity")
+    perm = ResourcePermission(
+        user_id=payload.user_id, entity_type=payload.entity_type,
+        entity_id=payload.entity_id, role="steward",
+        granted_by=current_user.id,
+    )
+    db.add(perm)
+    await db.commit()
+    await db.refresh(perm, ["user"])
+    return StewardOut(
+        id=perm.id, user_id=perm.user_id, user_name=perm.user.name,
+        user_email=perm.user.email, entity_type=perm.entity_type,
+        entity_id=perm.entity_id, created_at=perm.created_at,
+    )
+
+
+@router.delete("/stewards/{entity_type}/{entity_id}/{user_id}", status_code=204)
+async def remove_steward(
+    entity_type: str, entity_id: str, user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db), current_user: User = Depends(require_steward),
+):
+    perm = (await db.execute(
+        select(ResourcePermission).where(
+            ResourcePermission.user_id == user_id,
+            ResourcePermission.entity_type == entity_type,
+            ResourcePermission.entity_id == entity_id,
+            ResourcePermission.role == "steward",
+        )
+    )).scalar_one_or_none()
+    if perm is None:
+        raise HTTPException(status_code=404, detail="Steward assignment not found")
+    await db.delete(perm)
+    await db.commit()
+
+
+# ─── Endorsements ───────────────────────────────────────────────────────────
+
+VALID_ENDORSEMENT_STATUSES = {"endorsed", "warned", "deprecated"}
+
+
+@router.get("/endorsements/{entity_type}/{entity_id}", response_model=EndorsementOut | None)
+async def get_endorsement(
+    entity_type: str, entity_id: str,
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user),
+):
+    row = (await db.execute(
+        select(Endorsement).where(Endorsement.entity_type == entity_type, Endorsement.entity_id == entity_id)
+    )).scalar_one_or_none()
+    if row is None:
+        return None
+    await db.refresh(row, ["endorser"])
+    return EndorsementOut(
+        id=row.id, entity_type=row.entity_type, entity_id=row.entity_id,
+        status=row.status, comment=row.comment, endorsed_by=row.endorsed_by,
+        endorser_name=row.endorser.name if row.endorser else None,
+        created_at=row.created_at, updated_at=row.updated_at,
+    )
+
+
+@router.put("/endorsements", response_model=EndorsementOut)
+async def set_endorsement(
+    payload: EndorsementCreate,
+    db: AsyncSession = Depends(get_db), current_user: User = Depends(require_steward),
+):
+    if payload.status not in VALID_ENDORSEMENT_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Status must be one of {VALID_ENDORSEMENT_STATUSES}")
+    if payload.status in ("warned", "deprecated") and not payload.comment:
+        raise HTTPException(status_code=400, detail="Comment is required for warned or deprecated status")
+    existing = (await db.execute(
+        select(Endorsement).where(Endorsement.entity_type == payload.entity_type, Endorsement.entity_id == payload.entity_id)
+    )).scalar_one_or_none()
+    if existing:
+        existing.status = payload.status
+        existing.comment = payload.comment
+        existing.endorsed_by = current_user.id
+        existing.updated_at = datetime.now(timezone.utc)
+        row = existing
+    else:
+        row = Endorsement(
+            entity_type=payload.entity_type, entity_id=payload.entity_id,
+            status=payload.status, comment=payload.comment,
+            endorsed_by=current_user.id,
+        )
+        db.add(row)
+    await db.commit()
+    await db.refresh(row, ["endorser"])
+    return EndorsementOut(
+        id=row.id, entity_type=row.entity_type, entity_id=row.entity_id,
+        status=row.status, comment=row.comment, endorsed_by=row.endorsed_by,
+        endorser_name=row.endorser.name if row.endorser else None,
+        created_at=row.created_at, updated_at=row.updated_at,
+    )
+
+
+@router.delete("/endorsements/{entity_type}/{entity_id}", status_code=204)
+async def remove_endorsement(
+    entity_type: str, entity_id: str,
+    db: AsyncSession = Depends(get_db), current_user: User = Depends(require_steward),
+):
+    row = (await db.execute(
+        select(Endorsement).where(Endorsement.entity_type == entity_type, Endorsement.entity_id == entity_id)
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Endorsement not found")
+    await db.delete(row)
+    await db.commit()
+
+
+@router.post("/endorsements/batch", response_model=EndorsementBatchResponse)
+async def batch_endorsements(
+    payload: EndorsementBatchRequest,
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user),
+):
+    """Fetch endorsements for multiple entities in a single request."""
+    if not payload.keys:
+        return EndorsementBatchResponse(results={})
+    pairs = [(k.entity_type, k.entity_id) for k in payload.keys]
+    rows = (await db.execute(
+        select(Endorsement)
+        .where(tuple_(Endorsement.entity_type, Endorsement.entity_id).in_(pairs))
+        .options(selectinload(Endorsement.endorser))
+    )).scalars().all()
+    results: dict[str, EndorsementOut | None] = {}
+    found = {}
+    for row in rows:
+        key = f"{row.entity_type}:{row.entity_id}"
+        found[key] = EndorsementOut(
+            id=row.id, entity_type=row.entity_type, entity_id=row.entity_id,
+            status=row.status, comment=row.comment, endorsed_by=row.endorsed_by,
+            endorser_name=row.endorser.name if row.endorser else None,
+            created_at=row.created_at, updated_at=row.updated_at,
+        )
+    for k in payload.keys:
+        key = f"{k.entity_type}:{k.entity_id}"
+        results[key] = found.get(key, None)
+    return EndorsementBatchResponse(results=results)

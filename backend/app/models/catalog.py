@@ -161,7 +161,17 @@ class TableLineage(SoftDeleteMixin, Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
-    creator: Mapped["User | None"] = relationship("User")
+    integration_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    integration_method: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    integration_schedule: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    integration_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    integration_updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    integration_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    creator: Mapped["User | None"] = relationship("User", foreign_keys=[created_by])
+    integration_updater: Mapped["User | None"] = relationship("User", foreign_keys=[integration_updated_by])
 
     __table_args__ = (
         Index("ix_lineage_target", "target_db_name", "target_table_name"),

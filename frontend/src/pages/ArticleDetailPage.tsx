@@ -8,9 +8,11 @@ import { useAuth } from "../auth/AuthContext";
 import Breadcrumb from "../components/Breadcrumb";
 import InlineEdit from "../components/InlineEdit";
 import TagEditor from "../components/TagEditor";
-import FavoriteButton from "../components/FavoriteButton";
+
 import CommentSection from "../components/CommentSection";
 import { formatFileSize } from "../utils/formatters";
+import StewardSection from "../components/StewardSection";
+import EndorsementBadge from "../components/EndorsementBadge";
 
 export default function ArticleDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -49,7 +51,8 @@ export default function ArticleDetailPage() {
           <div className="flex-1">
             <InlineEdit value={article.title} onSave={async (v) => { const u = await patchArticle(id!, { title: v }); setArticle(u); }} placeholder="Article title..." canEdit={isSteward} />
           </div>
-          <FavoriteButton entityType="article" entityId={id!} />
+          <EndorsementBadge entityType="article" entityId={id!} />
+
           {isSteward && (
             <div className="ml-auto">
               {!confirmDelete ? (
@@ -72,6 +75,8 @@ export default function ArticleDetailPage() {
         </div>
 
         <TagEditor tags={article.tags || []} onChange={async (tags) => { const u = await patchArticle(id!, { tags }); setArticle(u); }} canEdit={isSteward} />
+
+        <StewardSection entityType="article" entityId={id!} />
 
         <div className="mt-6 border-t pt-4">
           <div className="text-xs text-gray-400 mb-1">Body</div>

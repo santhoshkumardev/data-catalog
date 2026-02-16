@@ -12,11 +12,11 @@ from app.database import get_db
 from app.models.catalog import Column, DbConnection, Schema, Table
 from app.models.user import User
 from app.schemas.catalog import (
-    ColumnOut, ColumnPatch,
+    BreadcrumbContext, ColumnOut, ColumnPatch, ColumnWithContext,
     DbConnectionOut, DbConnectionPatch,
     PaginatedColumns, PaginatedDbConnections, PaginatedSchemas, PaginatedTables,
     SchemaPatch, SchemaOut,
-    TableOut, TablePatch,
+    TableOut, TablePatch, TableWithContext,
 )
 from app.services.audit import log_action
 from app.services.search_sync import sync_database, sync_column, sync_schema, sync_table
@@ -36,11 +36,15 @@ async def list_databases(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     q: str = Query(None),
+    include_deleted: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    stmt = select(DbConnection).where(DbConnection.deleted_at.is_(None))
-    count_stmt = select(func.count()).select_from(DbConnection).where(DbConnection.deleted_at.is_(None))
+    stmt = select(DbConnection)
+    count_stmt = select(func.count()).select_from(DbConnection)
+    if not include_deleted:
+        stmt = stmt.where(DbConnection.deleted_at.is_(None))
+        count_stmt = count_stmt.where(DbConnection.deleted_at.is_(None))
     if q:
         like_q = f"%{q}%"
         stmt = stmt.where(DbConnection.name.ilike(like_q) | DbConnection.description.ilike(like_q))
@@ -52,7 +56,7 @@ async def list_databases(
 
 @router.get("/databases/{db_id}", response_model=DbConnectionOut)
 async def get_database(db_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    row = (await db.execute(select(DbConnection).where(DbConnection.id == db_id, DbConnection.deleted_at.is_(None)))).scalar_one_or_none()
+    row = (await db.execute(select(DbConnection).where(DbConnection.id == db_id))).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Database not found")
     return row
@@ -85,17 +89,19 @@ async def patch_database(
 @router.get("/databases/{db_id}/schemas", response_model=PaginatedSchemas)
 async def list_schemas(
     db_id: uuid.UUID, page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100),
+    include_deleted: bool = Query(False),
     db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user),
 ):
     base = Schema.connection_id == db_id
-    total = (await db.execute(select(func.count()).select_from(Schema).where(base, Schema.deleted_at.is_(None)))).scalar_one()
-    items = (await db.execute(select(Schema).where(base, Schema.deleted_at.is_(None)).offset((page - 1) * size).limit(size))).scalars().all()
+    filters = [base] if include_deleted else [base, Schema.deleted_at.is_(None)]
+    total = (await db.execute(select(func.count()).select_from(Schema).where(*filters))).scalar_one()
+    items = (await db.execute(select(Schema).where(*filters).offset((page - 1) * size).limit(size))).scalars().all()
     return PaginatedSchemas(total=total, page=page, size=size, items=list(items))
 
 
 @router.get("/schemas/{schema_id}", response_model=SchemaOut)
 async def get_schema(schema_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    row = (await db.execute(select(Schema).where(Schema.id == schema_id, Schema.deleted_at.is_(None)))).scalar_one_or_none()
+    row = (await db.execute(select(Schema).where(Schema.id == schema_id))).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Schema not found")
     return row
@@ -128,10 +134,14 @@ async def patch_schema(
 async def list_tables(
     schema_id: uuid.UUID, page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100),
     q: str = Query(None),
+    include_deleted: bool = Query(False),
     db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user),
 ):
-    stmt = select(Table).where(Table.schema_id == schema_id, Table.deleted_at.is_(None))
-    count_stmt = select(func.count()).select_from(Table).where(Table.schema_id == schema_id, Table.deleted_at.is_(None))
+    filters = [Table.schema_id == schema_id]
+    if not include_deleted:
+        filters.append(Table.deleted_at.is_(None))
+    stmt = select(Table).where(*filters)
+    count_stmt = select(func.count()).select_from(Table).where(*filters)
     if q:
         like_q = f"%{q}%"
         stmt = stmt.where(Table.name.ilike(like_q) | Table.description.ilike(like_q))
@@ -143,7 +153,7 @@ async def list_tables(
 
 @router.get("/tables/{table_id}", response_model=TableOut)
 async def get_table(table_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    row = (await db.execute(select(Table).where(Table.id == table_id, Table.deleted_at.is_(None)))).scalar_one_or_none()
+    row = (await db.execute(select(Table).where(Table.id == table_id))).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Table not found")
     return row
@@ -175,10 +185,14 @@ async def patch_table(
 @router.get("/tables/{table_id}/columns", response_model=PaginatedColumns)
 async def list_columns(
     table_id: uuid.UUID, page: int = Query(1, ge=1), size: int = Query(100, ge=1, le=500),
+    include_deleted: bool = Query(False),
     db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user),
 ):
-    total = (await db.execute(select(func.count()).select_from(Column).where(Column.table_id == table_id, Column.deleted_at.is_(None)))).scalar_one()
-    items = (await db.execute(select(Column).where(Column.table_id == table_id, Column.deleted_at.is_(None)).offset((page - 1) * size).limit(size))).scalars().all()
+    filters = [Column.table_id == table_id]
+    if not include_deleted:
+        filters.append(Column.deleted_at.is_(None))
+    total = (await db.execute(select(func.count()).select_from(Column).where(*filters))).scalar_one()
+    items = (await db.execute(select(Column).where(*filters).offset((page - 1) * size).limit(size))).scalars().all()
     return PaginatedColumns(total=total, page=page, size=size, items=list(items))
 
 
@@ -209,3 +223,46 @@ async def patch_column(
     await db.refresh(row)
     sync_column(row)
     return row
+
+
+# ─── Context Endpoints (waterfall elimination) ──────────────────────────────
+
+@router.get("/tables/{table_id}/context", response_model=TableWithContext)
+async def get_table_context(
+    table_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user),
+):
+    row = (await db.execute(
+        select(Table)
+        .where(Table.id == table_id)
+        .options(selectinload(Table.schema).selectinload(Schema.connection))
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Table not found")
+    return TableWithContext(
+        **TableOut.model_validate(row).model_dump(),
+        context=BreadcrumbContext(
+            database=DbConnectionOut.model_validate(row.schema.connection),
+            schema_obj=SchemaOut.model_validate(row.schema),
+        ),
+    )
+
+
+@router.get("/columns/{column_id}/context", response_model=ColumnWithContext)
+async def get_column_context(
+    column_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user),
+):
+    row = (await db.execute(
+        select(Column)
+        .where(Column.id == column_id)
+        .options(selectinload(Column.table).selectinload(Table.schema).selectinload(Schema.connection))
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Column not found")
+    return ColumnWithContext(
+        **ColumnOut.model_validate(row).model_dump(),
+        context=BreadcrumbContext(
+            database=DbConnectionOut.model_validate(row.table.schema.connection),
+            schema_obj=SchemaOut.model_validate(row.table.schema),
+        ),
+        table=TableOut.model_validate(row.table),
+    )

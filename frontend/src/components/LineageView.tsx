@@ -7,9 +7,13 @@ import {
   createLineageEdge,
   searchTablesForLineage,
   expandLineageNode,
+  getEdgeAnnotation,
+  updateEdgeAnnotation,
   type LineageGraph,
   type LineageNode,
   type LineageTableSearchResult,
+  type EdgeAnnotation,
+  type EdgeAnnotationUpdate,
 } from "../api/catalog";
 import { useAuth } from "../auth/AuthContext";
 
@@ -29,6 +33,7 @@ interface FlatEdge {
   source_key: string;
   target_key: string;
   edge_id?: string;
+  has_annotation?: boolean;
 }
 
 function nodeKey(db: string, table: string) {
@@ -61,8 +66,8 @@ function flattenTree(
     }
     const edge: FlatEdge =
       direction === "upstream"
-        ? { source_key: key, target_key: parentKey, edge_id: n.edge_id ?? undefined }
-        : { source_key: parentKey, target_key: key, edge_id: n.edge_id ?? undefined };
+        ? { source_key: key, target_key: parentKey, edge_id: n.edge_id ?? undefined, has_annotation: n.has_annotation ?? false }
+        : { source_key: parentKey, target_key: key, edge_id: n.edge_id ?? undefined, has_annotation: n.has_annotation ?? false };
     if (!outEdges.some((e) => e.source_key === edge.source_key && e.target_key === edge.target_key)) {
       outEdges.push(edge);
     }
@@ -146,25 +151,35 @@ function getLeafKeys(edges: FlatEdge[], currentKey: string): { upstreamLeaves: S
 
 const CONNECTOR_WIDTH = 60;
 
+interface ConnectorPath {
+  d: string;
+  key: string;
+  mx: number;
+  my: number;
+  edge_id?: string;
+  has_annotation?: boolean;
+}
+
 function ColumnConnector({
   leftColKeys,
   rightColKeys,
   edges,
   nodeRefs,
   layoutVersion,
+  onEdgeClick,
 }: {
   leftColKeys: string[];
   rightColKeys: string[];
   edges: FlatEdge[];
   nodeRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
   layoutVersion: number;
+  onEdgeClick?: (edgeId: string) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [paths, setPaths] = useState<{ d: string; key: string }[]>([]);
+  const [paths, setPaths] = useState<ConnectorPath[]>([]);
   const [svgHeight, setSvgHeight] = useState(60);
 
   useEffect(() => {
-    // Wait a frame so node refs are measured
     const rafId = requestAnimationFrame(() => {
       const svg = svgRef.current;
       if (!svg) return;
@@ -175,7 +190,7 @@ function ColumnConnector({
       );
 
       let maxY = 60;
-      const newPaths: { d: string; key: string }[] = [];
+      const newPaths: ConnectorPath[] = [];
 
       for (const edge of relevantEdges) {
         const sourceEl = nodeRefs.current.get(edge.source_key);
@@ -185,7 +200,6 @@ function ColumnConnector({
         const sourceRect = sourceEl.getBoundingClientRect();
         const targetRect = targetEl.getBoundingClientRect();
 
-        // Y positions relative to the SVG element
         const y1 = sourceRect.top + sourceRect.height / 2 - svgRect.top;
         const y2 = targetRect.top + targetRect.height / 2 - svgRect.top;
 
@@ -193,7 +207,9 @@ function ColumnConnector({
 
         const cx = CONNECTOR_WIDTH * 0.45;
         const d = `M 0 ${y1} C ${cx} ${y1}, ${CONNECTOR_WIDTH - cx} ${y2}, ${CONNECTOR_WIDTH} ${y2}`;
-        newPaths.push({ d, key: `${edge.source_key}->${edge.target_key}` });
+        const mx = CONNECTOR_WIDTH / 2;
+        const my = (y1 + y2) / 2;
+        newPaths.push({ d, key: `${edge.source_key}->${edge.target_key}`, mx, my, edge_id: edge.edge_id, has_annotation: edge.has_annotation });
       }
 
       setSvgHeight(maxY);
@@ -216,14 +232,42 @@ function ColumnConnector({
         </marker>
       </defs>
       {paths.map((p) => (
-        <path
-          key={p.key}
-          d={p.d}
-          fill="none"
-          stroke="#64748b"
-          strokeWidth={2}
-          markerEnd="url(#conn-arrow)"
-        />
+        <g key={p.key}>
+          <path
+            d={p.d}
+            fill="none"
+            stroke="#64748b"
+            strokeWidth={2}
+            markerEnd="url(#conn-arrow)"
+          />
+          {p.edge_id && (
+            <g
+              style={{ cursor: "pointer" }}
+              onClick={() => onEdgeClick?.(p.edge_id!)}
+            >
+              <circle
+                cx={p.mx}
+                cy={p.my}
+                r={8}
+                fill={p.has_annotation ? "#3b82f6" : "white"}
+                stroke={p.has_annotation ? "#2563eb" : "#9ca3af"}
+                strokeWidth={1.5}
+              />
+              <text
+                x={p.mx}
+                y={p.my}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize={9}
+                fontWeight="bold"
+                fill={p.has_annotation ? "white" : "#6b7280"}
+                style={{ pointerEvents: "none" }}
+              >
+                i
+              </text>
+            </g>
+          )}
+        </g>
       ))}
     </svg>
   );
@@ -418,6 +462,169 @@ function StaticArrow() {
   );
 }
 
+// ─── Edge Annotation Display (read-only) ───────────────────────────────────
+
+function EdgeAnnotationDisplay({ annotation }: { annotation: EdgeAnnotation }) {
+  const hasAny =
+    annotation.integration_description ||
+    annotation.integration_method ||
+    annotation.integration_schedule ||
+    annotation.integration_notes;
+
+  if (!hasAny) {
+    return <p className="text-sm text-gray-400 italic">No integration details documented yet.</p>;
+  }
+
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+      {annotation.integration_method && (
+        <>
+          <dt className="font-medium text-gray-500">Method</dt>
+          <dd className="text-gray-800">{annotation.integration_method}</dd>
+        </>
+      )}
+      {annotation.integration_schedule && (
+        <>
+          <dt className="font-medium text-gray-500">Schedule</dt>
+          <dd className="text-gray-800">{annotation.integration_schedule}</dd>
+        </>
+      )}
+      {annotation.integration_description && (
+        <>
+          <dt className="font-medium text-gray-500">Description</dt>
+          <dd className="text-gray-800 whitespace-pre-wrap">{annotation.integration_description}</dd>
+        </>
+      )}
+      {annotation.integration_notes && (
+        <>
+          <dt className="font-medium text-gray-500">Notes</dt>
+          <dd className="text-gray-800 whitespace-pre-wrap">{annotation.integration_notes}</dd>
+        </>
+      )}
+    </dl>
+  );
+}
+
+// ─── Edge Annotation Form ──────────────────────────────────────────────────
+
+const METHOD_OPTIONS = ["ETL", "Kafka", "API", "Manual", "Custom"];
+
+function EdgeAnnotationForm({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial: EdgeAnnotation;
+  onSave: (data: EdgeAnnotationUpdate) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [description, setDescription] = useState(initial.integration_description ?? "");
+  const [method, setMethod] = useState(initial.integration_method ?? "");
+  const [customMethod, setCustomMethod] = useState("");
+  const [schedule, setSchedule] = useState(initial.integration_schedule ?? "");
+  const [notes, setNotes] = useState(initial.integration_notes ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const isCustom = method === "Custom";
+  const effectiveMethod = isCustom ? customMethod : method;
+
+  // Initialize custom method if the initial value isn't in the preset list
+  useEffect(() => {
+    if (initial.integration_method && !METHOD_OPTIONS.includes(initial.integration_method)) {
+      setMethod("Custom");
+      setCustomMethod(initial.integration_method);
+    }
+  }, [initial.integration_method]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await onSave({
+        integration_description: description || null,
+        integration_method: effectiveMethod || null,
+        integration_schedule: schedule || null,
+        integration_notes: notes || null,
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div>
+        <label className="block text-sm font-medium text-gray-600 mb-1">Method</label>
+        <div className="flex gap-2">
+          <select
+            value={method}
+            onChange={(e) => setMethod(e.target.value)}
+            className="border rounded px-2 py-1.5 text-sm bg-white flex-1"
+          >
+            <option value="">— Select —</option>
+            {METHOD_OPTIONS.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+          {isCustom && (
+            <input
+              type="text"
+              value={customMethod}
+              onChange={(e) => setCustomMethod(e.target.value)}
+              placeholder="Enter method..."
+              className="border rounded px-2 py-1.5 text-sm flex-1"
+            />
+          )}
+        </div>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-600 mb-1">Schedule</label>
+        <input
+          type="text"
+          value={schedule}
+          onChange={(e) => setSchedule(e.target.value)}
+          placeholder='e.g. "Daily 2am", "Real-time"'
+          className="border rounded px-2 py-1.5 text-sm w-full"
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-600 mb-1">Description</label>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={2}
+          className="border rounded px-2 py-1.5 text-sm w-full resize-y"
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-600 mb-1">Notes</label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={2}
+          className="border rounded px-2 py-1.5 text-sm w-full resize-y"
+        />
+      </div>
+      <div className="flex gap-2 pt-1">
+        <button
+          type="submit"
+          disabled={saving}
+          className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 // ─── Main LineageView ──────────────────────────────────────────────────────
 
 export default function LineageView({ tableId }: { tableId: string }) {
@@ -432,6 +639,10 @@ export default function LineageView({ tableId }: { tableId: string }) {
     anchorKey: string;
     direction: "upstream" | "downstream";
   } | null>(null);
+
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [annotation, setAnnotation] = useState<EdgeAnnotation | null>(null);
+  const [editingAnnotation, setEditingAnnotation] = useState(false);
 
   const nodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -542,6 +753,28 @@ export default function LineageView({ tableId }: { tableId: string }) {
     } catch {
       // handle error
     }
+  };
+
+  const handleEdgeClick = async (edgeId: string) => {
+    setSelectedEdgeId(edgeId);
+    setEditingAnnotation(false);
+    try {
+      const ann = await getEdgeAnnotation(edgeId);
+      setAnnotation(ann);
+    } catch {
+      setAnnotation(null);
+    }
+  };
+
+  const handleSaveAnnotation = async (data: EdgeAnnotationUpdate) => {
+    if (!selectedEdgeId) return;
+    const updated = await updateEdgeAnnotation(selectedEdgeId, data);
+    setAnnotation(updated);
+    setEditingAnnotation(false);
+    const hasAnn = !!(data.integration_description || data.integration_method || data.integration_schedule || data.integration_notes);
+    setEdges((prev) =>
+      prev.map((e) => (e.edge_id === selectedEdgeId ? { ...e, has_annotation: hasAnn } : e))
+    );
   };
 
   if (loading) {
@@ -675,6 +908,7 @@ export default function LineageView({ tableId }: { tableId: string }) {
           edges={edges}
           nodeRefs={nodeRefs}
           layoutVersion={layoutVersion}
+          onEdgeClick={handleEdgeClick}
         />
       );
     }
@@ -732,6 +966,40 @@ export default function LineageView({ tableId }: { tableId: string }) {
           {interleaved}
         </div>
       </div>
+
+      {/* Annotation panel */}
+      {selectedEdgeId && annotation !== null && (
+        <div className="border rounded-lg bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-700">Integration Details</h3>
+            <div className="flex items-center gap-2">
+              {isSteward && !editingAnnotation && (
+                <button
+                  onClick={() => setEditingAnnotation(true)}
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                >
+                  Edit
+                </button>
+              )}
+              <button
+                onClick={() => { setSelectedEdgeId(null); setAnnotation(null); setEditingAnnotation(false); }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+          {editingAnnotation ? (
+            <EdgeAnnotationForm
+              initial={annotation}
+              onSave={handleSaveAnnotation}
+              onCancel={() => setEditingAnnotation(false)}
+            />
+          ) : (
+            <EdgeAnnotationDisplay annotation={annotation} />
+          )}
+        </div>
+      )}
     </div>
   );
 }

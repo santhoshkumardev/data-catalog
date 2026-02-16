@@ -7,7 +7,7 @@ import { useAuth } from "../auth/AuthContext";
 import Breadcrumb from "../components/Breadcrumb";
 import InlineEdit from "../components/InlineEdit";
 import TagEditor from "../components/TagEditor";
-import FavoriteButton from "../components/FavoriteButton";
+
 import CommentSection from "../components/CommentSection";
 
 const ENTITY_LINKS: Record<string, (id: string) => string> = {
@@ -62,7 +62,7 @@ export default function GlossaryTermPage() {
           <span className={`text-xs px-2 py-0.5 rounded-full ${term.status === "approved" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
             {term.status}
           </span>
-          <FavoriteButton entityType="glossary" entityId={id!} />
+
           <div className="ml-auto flex gap-2">
             {isSteward && (
               <button onClick={handleStatusToggle} className="px-3 py-1 text-sm border rounded hover:bg-gray-50">

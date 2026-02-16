@@ -1,6 +1,7 @@
 """Lineage endpoints — read (JWT), write (steward), with BFS node-count cap."""
 import uuid
 from collections import deque
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, tuple_
@@ -10,7 +11,15 @@ from app.auth.dependencies import get_current_user, require_steward
 from app.database import get_db
 from app.models.catalog import DbConnection, Schema, Table, TableLineage
 from app.models.user import User
-from app.schemas.catalog import LineageEdgeCreate, LineageEdgeOut, LineageGraph, LineageNode, LineageTableSearchResult
+from app.schemas.catalog import (
+    EdgeAnnotationOut,
+    EdgeAnnotationUpdate,
+    LineageEdgeCreate,
+    LineageEdgeOut,
+    LineageGraph,
+    LineageNode,
+    LineageTableSearchResult,
+)
 from app.services.audit import log_action
 
 router = APIRouter(prefix="/api/v1", tags=["lineage"])
@@ -38,6 +47,15 @@ async def _is_catalog_table(db_name: str, table_name: str, db: AsyncSession) -> 
     )
     tid = result.scalar_one_or_none()
     return (tid is not None), tid
+
+
+def _edge_has_annotation(edge: TableLineage) -> bool:
+    return any([
+        edge.integration_description,
+        edge.integration_method,
+        edge.integration_schedule,
+        edge.integration_notes,
+    ])
 
 
 async def _bfs(start_db: str, start_table: str, max_levels: int, db: AsyncSession, direction: str) -> list[LineageNode]:
@@ -70,7 +88,7 @@ async def _bfs(start_db: str, start_table: str, max_levels: int, db: AsyncSessio
             else:
                 n_db, n_table = edge.target_db_name, edge.target_table_name
             is_cat, tid = await _is_catalog_table(n_db, n_table, db)
-            node = LineageNode(db_name=n_db, table_name=n_table, is_catalog_table=is_cat, table_id=tid, edge_id=edge.id)
+            node = LineageNode(db_name=n_db, table_name=n_table, is_catalog_table=is_cat, table_id=tid, edge_id=edge.id, has_annotation=_edge_has_annotation(edge))
             parent_list.append(node)
             node_count += 1
             key = (n_db, n_table)
@@ -195,3 +213,39 @@ async def delete_lineage_edge(
     await db.delete(edge)
     await log_action(db, "lineage", str(edge_id), "delete", current_user.id)
     await db.commit()
+
+
+@router.get("/lineage/{edge_id}/annotation", response_model=EdgeAnnotationOut)
+async def get_edge_annotation(
+    edge_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(select(TableLineage).where(TableLineage.id == edge_id))
+    edge = result.scalar_one_or_none()
+    if edge is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Edge not found")
+    return EdgeAnnotationOut.model_validate(edge)
+
+
+@router.put("/lineage/{edge_id}/annotation", response_model=EdgeAnnotationOut)
+async def update_edge_annotation(
+    edge_id: uuid.UUID,
+    data: EdgeAnnotationUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_steward),
+):
+    result = await db.execute(select(TableLineage).where(TableLineage.id == edge_id))
+    edge = result.scalar_one_or_none()
+    if edge is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Edge not found")
+    edge.integration_description = data.integration_description
+    edge.integration_method = data.integration_method
+    edge.integration_schedule = data.integration_schedule
+    edge.integration_notes = data.integration_notes
+    edge.integration_updated_by = current_user.id
+    edge.integration_updated_at = datetime.now(timezone.utc)
+    await log_action(db, "lineage", str(edge_id), "update_annotation", current_user.id)
+    await db.commit()
+    await db.refresh(edge)
+    return EdgeAnnotationOut.model_validate(edge)
