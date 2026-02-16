@@ -16,7 +16,13 @@ export default function LoginPage() {
   const [providers, setProviders] = useState<AuthProvider[]>([]);
   const [authMode, setAuthMode] = useState<string>("basic");
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, user } = useAuth();
+
+  useEffect(() => {
+    if (user) {
+      navigate("/", { replace: true });
+    }
+  }, [user, navigate]);
 
   useEffect(() => {
     api
