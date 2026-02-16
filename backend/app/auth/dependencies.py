@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime, timezone
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy import select
@@ -11,12 +12,12 @@ from app.config import settings
 from app.database import get_db
 from app.models.user import User
 
-bearer_scheme = HTTPBearer()
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: AsyncSession = Depends(get_db),
+async def _resolve_user_from_token(
+    credentials: HTTPAuthorizationCredentials,
+    db: AsyncSession,
 ) -> User:
     exc = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
     try:
@@ -32,6 +33,71 @@ async def get_current_user(
     if user is None:
         raise exc
     return user
+
+
+def resolve_sso_role(groups_header: str | None) -> str | None:
+    """Map semicolon-delimited Shibboleth groups header to application role."""
+    if not groups_header:
+        return None
+    groups = [g.strip() for g in groups_header.split(";") if g.strip()]
+    if not groups:
+        return None
+    if settings.sso_admin_group and settings.sso_admin_group in groups:
+        return "admin"
+    if settings.sso_steward_group and settings.sso_steward_group in groups:
+        return "steward"
+    return "viewer"
+
+
+async def _resolve_user_from_sso_headers(
+    request: Request,
+    db: AsyncSession,
+) -> User:
+    exc = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="SSO headers missing")
+    email = request.headers.get(settings.sso_header_email)
+    if not email:
+        raise exc
+
+    display_name = request.headers.get(settings.sso_header_name) or email
+    groups_header = request.headers.get(settings.sso_header_groups)
+    group_role = resolve_sso_role(groups_header)
+
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        user = User(
+            id=uuid.uuid4(),
+            email=email,
+            name=display_name,
+            role=group_role or settings.sso_default_role,
+            oauth_provider="shibboleth",
+            oauth_sub=email,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    else:
+        if group_role is not None:
+            user.role = group_role
+
+    user.last_login = datetime.now(timezone.utc)
+    await db.commit()
+    return user
+
+
+async def get_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    if credentials is not None:
+        return await _resolve_user_from_token(credentials, db)
+
+    if settings.auth_mode == "sso":
+        return await _resolve_user_from_sso_headers(request, db)
+
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
 
 async def require_steward(current_user: User = Depends(get_current_user)) -> User:
