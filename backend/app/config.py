@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     oidc_admin_group: str = ""
     oidc_steward_group: str = ""
 
+    # SSO (Shibboleth header-based auth)
+    auth_mode: str = "basic"                # "sso" or "basic"
+    sso_header_email: str = "X-Shib-mail"
+    sso_header_name: str = "X-Shib-displayName"
+    sso_default_role: str = "viewer"
+
     ingest_api_key: str = "dev-ingest-key"
 
     app_base_url: str = "http://localhost:8001"

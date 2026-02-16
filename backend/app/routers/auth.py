@@ -73,6 +73,8 @@ def _resolve_role_from_groups(groups: list[str] | None) -> str | None:
 
 @router.get("/providers")
 async def auth_providers():
+    if settings.auth_mode == "sso":
+        return {"auth_mode": "sso", "providers": []}
     providers = []
     if settings.google_client_id:
         providers.append({"name": "google", "label": "Google"})
@@ -80,7 +82,43 @@ async def auth_providers():
         providers.append({"name": "azure", "label": "Azure AD"})
     if settings.oidc_issuer_url:
         providers.append({"name": "oidc", "label": "SSO"})
-    return {"providers": providers}
+    return {"auth_mode": "basic", "providers": providers}
+
+
+@router.get("/sso-check")
+async def sso_check(request: Request, db: AsyncSession = Depends(get_db)):
+    if settings.auth_mode != "sso":
+        return {"sso": False}
+
+    email = request.headers.get(settings.sso_header_email)
+    if not email:
+        return {"sso": False}
+
+    display_name = request.headers.get(settings.sso_header_name) or email
+
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        user = User(
+            id=uuid.uuid4(),
+            email=email,
+            name=display_name,
+            role=settings.sso_default_role,
+            oauth_provider="shibboleth",
+            oauth_sub=email,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    else:
+        user.name = display_name
+
+    user.last_login = datetime.now(timezone.utc)
+    await db.commit()
+
+    access_token = create_access_token({"sub": str(user.id), "role": user.role})
+    return {"sso": True, "access_token": access_token}
 
 
 @router.get("/login/{provider}")

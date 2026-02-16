@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime, timezone
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy import select
@@ -11,12 +12,12 @@ from app.config import settings
 from app.database import get_db
 from app.models.user import User
 
-bearer_scheme = HTTPBearer()
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: AsyncSession = Depends(get_db),
+async def _resolve_user_from_token(
+    credentials: HTTPAuthorizationCredentials,
+    db: AsyncSession,
 ) -> User:
     exc = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
     try:
@@ -32,6 +33,52 @@ async def get_current_user(
     if user is None:
         raise exc
     return user
+
+
+async def _resolve_user_from_sso_headers(
+    request: Request,
+    db: AsyncSession,
+) -> User:
+    exc = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="SSO headers missing")
+    email = request.headers.get(settings.sso_header_email)
+    if not email:
+        raise exc
+
+    display_name = request.headers.get(settings.sso_header_name) or email
+
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        user = User(
+            id=uuid.uuid4(),
+            email=email,
+            name=display_name,
+            role=settings.sso_default_role,
+            oauth_provider="shibboleth",
+            oauth_sub=email,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+    user.last_login = datetime.now(timezone.utc)
+    await db.commit()
+    return user
+
+
+async def get_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    if credentials is not None:
+        return await _resolve_user_from_token(credentials, db)
+
+    if settings.auth_mode == "sso":
+        return await _resolve_user_from_sso_headers(request, db)
+
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
 
 async def require_steward(current_user: User = Depends(get_current_user)) -> User:
