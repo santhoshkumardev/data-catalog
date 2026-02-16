@@ -29,6 +29,7 @@ class ColumnPatch(BaseModel):
 class ColumnOut(ColumnBase):
     id: uuid.UUID
     table_id: uuid.UUID
+    deleted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -62,6 +63,7 @@ class TablePatch(BaseModel):
 class TableOut(TableBase):
     id: uuid.UUID
     schema_id: uuid.UUID
+    deleted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -88,6 +90,7 @@ class SchemaPatch(BaseModel):
 class SchemaOut(SchemaBase):
     id: uuid.UUID
     connection_id: uuid.UUID
+    deleted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -114,10 +117,29 @@ class DbConnectionPatch(BaseModel):
 
 class DbConnectionOut(DbConnectionBase):
     id: uuid.UUID
+    deleted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ─── Context (waterfall elimination) ────────────────────────────────────────
+
+class BreadcrumbContext(BaseModel):
+    database: DbConnectionOut
+    schema_obj: SchemaOut
+
+    model_config = {"from_attributes": True}
+
+
+class TableWithContext(TableOut):
+    context: BreadcrumbContext
+
+
+class ColumnWithContext(ColumnOut):
+    context: BreadcrumbContext
+    table: TableOut
 
 
 # ─── Ingest payload ──────────────────────────────────────────────────────────
@@ -145,6 +167,7 @@ class IngestSchema(BaseModel):
 class IngestBatchPayload(BaseModel):
     database: DbConnectionCreate
     schemas: list[IngestSchema] = []
+    mark_missing_as_deleted: bool = False
 
 
 class IngestBatchResult(BaseModel):
@@ -303,12 +326,31 @@ class LineageNode(BaseModel):
     is_catalog_table: bool
     table_id: uuid.UUID | None = None
     edge_id: uuid.UUID | None = None
+    has_annotation: bool = False
     has_more_upstream: bool = False
     has_more_downstream: bool = False
     children: list["LineageNode"] = []
 
 
 LineageNode.model_rebuild()
+
+
+class EdgeAnnotationOut(BaseModel):
+    integration_description: str | None = None
+    integration_method: str | None = None
+    integration_schedule: str | None = None
+    integration_notes: str | None = None
+    integration_updated_by: uuid.UUID | None = None
+    integration_updated_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class EdgeAnnotationUpdate(BaseModel):
+    integration_description: str | None = None
+    integration_method: str | None = None
+    integration_schedule: str | None = None
+    integration_notes: str | None = None
 
 
 class LineageTableSearchResult(BaseModel):

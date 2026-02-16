@@ -1,5 +1,6 @@
 """Metadata ingestion endpoints — protected by API key."""
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -89,6 +90,65 @@ async def ingest_batch(payload: IngestBatchPayload, db: AsyncSession = Depends(g
                     )
                     db.add(col)
                 columns_upserted += 1
+
+    # Mark missing objects as deleted if requested
+    if payload.mark_missing_as_deleted:
+        now = datetime.now(timezone.utc)
+        ingested_schema_names = {sp.name for sp in payload.schemas}
+
+        # Find schemas under this database that were NOT in the payload
+        all_schemas = (await db.execute(
+            select(Schema).where(Schema.connection_id == db_conn.id, Schema.deleted_at.is_(None))
+        )).scalars().all()
+        for s in all_schemas:
+            if s.name not in ingested_schema_names:
+                s.deleted_at = now
+                # Also mark all tables/columns under this schema as deleted
+                all_tables = (await db.execute(
+                    select(Table).where(Table.schema_id == s.id, Table.deleted_at.is_(None))
+                )).scalars().all()
+                for t in all_tables:
+                    t.deleted_at = now
+                    all_cols = (await db.execute(
+                        select(Column).where(Column.table_id == t.id, Column.deleted_at.is_(None))
+                    )).scalars().all()
+                    for c in all_cols:
+                        c.deleted_at = now
+
+        # For each ingested schema, mark missing tables
+        for schema_payload in payload.schemas:
+            schema_row = (await db.execute(
+                select(Schema).where(Schema.connection_id == db_conn.id, Schema.name == schema_payload.name)
+            )).scalar_one_or_none()
+            if schema_row is None:
+                continue
+            ingested_table_names = {tp.name for tp in schema_payload.tables}
+            all_tables = (await db.execute(
+                select(Table).where(Table.schema_id == schema_row.id, Table.deleted_at.is_(None))
+            )).scalars().all()
+            for t in all_tables:
+                if t.name not in ingested_table_names:
+                    t.deleted_at = now
+                    all_cols = (await db.execute(
+                        select(Column).where(Column.table_id == t.id, Column.deleted_at.is_(None))
+                    )).scalars().all()
+                    for c in all_cols:
+                        c.deleted_at = now
+
+            # For each ingested table, mark missing columns
+            for table_payload in schema_payload.tables:
+                table_row = (await db.execute(
+                    select(Table).where(Table.schema_id == schema_row.id, Table.name == table_payload.name)
+                )).scalar_one_or_none()
+                if table_row is None:
+                    continue
+                ingested_col_names = {cp.name for cp in table_payload.columns}
+                all_cols = (await db.execute(
+                    select(Column).where(Column.table_id == table_row.id, Column.deleted_at.is_(None))
+                )).scalars().all()
+                for c in all_cols:
+                    if c.name not in ingested_col_names:
+                        c.deleted_at = now
 
     await db.commit()
 

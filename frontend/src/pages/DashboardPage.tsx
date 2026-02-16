@@ -4,7 +4,7 @@ import { Database, Table2, FileCode, BookOpen, BookText, TrendingUp } from "luci
 import { useAuth } from "../auth/AuthContext";
 import { getStats, type Stats, type SearchResult } from "../api/catalog";
 import { getTrendingEntities, type PopularEntity } from "../api/analytics";
-import { getMyFavorites, type Favorite } from "../api/social";
+
 import SearchAutocomplete from "../components/SearchAutocomplete";
 import AIResponsePanel from "../components/AIResponsePanel";
 import type { AiResponse } from "../api/ai";
@@ -14,7 +14,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const [stats, setStats] = useState<Stats | null>(null);
   const [trending, setTrending] = useState<PopularEntity[]>([]);
-  const [favorites, setFavorites] = useState<Favorite[]>([]);
+
   const [aiQ, setAiQ] = useState("");
   const [aiRes, setAiRes] = useState<AiResponse | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -23,7 +23,7 @@ export default function DashboardPage() {
   useEffect(() => {
     getStats().then(setStats).catch(() => {});
     getTrendingEntities(5).then(setTrending).catch(() => {});
-    getMyFavorites().then(setFavorites).catch(() => {});
+
   }, []);
 
   const handleAI = (q: string, r: AiResponse, results: SearchResult[]) => {
@@ -84,19 +84,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {favorites.length > 0 && (
-          <div className="bg-white rounded-lg border p-4">
-            <h2 className="font-semibold mb-3">Your Favorites</h2>
-            <div className="space-y-2">
-              {favorites.slice(0, 5).map((f) => (
-                <div key={f.id} className="text-sm text-gray-700">
-                  <span className="text-xs text-gray-400">{f.entity_type}</span> {f.entity_id.slice(0, 8)}...
-                </div>
-              ))}
-              {favorites.length > 5 && <Link to="/favorites" className="text-xs text-blue-600 hover:underline">See all</Link>}
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="grid grid-cols-3 gap-4 mt-8">

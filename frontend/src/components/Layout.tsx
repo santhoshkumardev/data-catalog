@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Database, FileCode, BookOpen, BookText, Search, Plus, X,
-  LogOut, User, Settings, Heart, ChevronDown, ChevronRight,
+  LogOut, User, Settings, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { getDatabases, createQuery, createArticle, type DbConnection, type QueryCreate } from "../api/catalog";
@@ -11,7 +11,6 @@ import QueryTree from "./QueryTree";
 import ArticleTree from "./ArticleTree";
 import GlossaryTree from "./GlossaryTree";
 import SidebarSearch from "./SidebarSearch";
-import NotificationBell from "./NotificationBell";
 
 function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -185,8 +184,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <Link to="/search" className="text-sm text-gray-600 hover:text-blue-600">Search</Link>
           </div>
           <div className="flex items-center gap-3">
-            <NotificationBell />
-            <Link to="/favorites" className="text-gray-500 hover:text-red-500"><Heart size={18} /></Link>
             <div className="relative">
               <button onClick={() => setUserMenuOpen(!userMenuOpen)} className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-800">
                 <User size={16} />

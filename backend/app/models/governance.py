@@ -69,6 +69,25 @@ class ResourcePermission(Base):
     )
 
 
+class Endorsement(Base):
+    __tablename__ = "endorsements"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)  # endorsed, warned, deprecated
+    comment: Mapped[str | None] = mapped_column(Text)
+    endorsed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    endorser: Mapped["User | None"] = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint("entity_type", "entity_id", name="uq_endorsement_entity"),
+    )
+
+
 class ColumnProfile(Base):
     __tablename__ = "column_profiles"
 

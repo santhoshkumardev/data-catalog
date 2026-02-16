@@ -1,5 +1,6 @@
-"""User management + audit log viewer — admin/steward only."""
+"""User management, groups, + audit log viewer — admin/steward only."""
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -9,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import require_admin, require_steward, get_current_user
 from app.database import get_db
 from app.models.audit import AuditLog
+from app.models.group import Group, UserGroup
 from app.models.user import User
 from app.schemas.audit import AuditLogOut, PaginatedAuditLogs
+from app.schemas.group import GroupCreate, GroupOut, GroupPatch, UserGroupOut, AddMember
 from app.services.audit import log_action
 from app.services.search_sync import reindex_all
 
@@ -92,3 +95,147 @@ async def reindex_search(
 ):
     counts = await reindex_all(db)
     return {"status": "ok", "counts": counts}
+
+
+# ─── Groups ──────────────────────────────────────────────────────────────────
+
+VALID_GROUP_ROLES = {"admin", "steward", "viewer"}
+
+
+@router.get("/groups", response_model=list[GroupOut])
+async def list_groups(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    rows = (await db.execute(select(Group).order_by(Group.name))).scalars().all()
+    items = []
+    for g in rows:
+        count = (await db.execute(
+            select(func.count()).select_from(UserGroup).where(UserGroup.group_id == g.id)
+        )).scalar_one()
+        items.append(GroupOut(
+            id=g.id, name=g.name, ad_group_name=g.ad_group_name,
+            app_role=g.app_role, description=g.description,
+            member_count=count, created_at=g.created_at,
+        ))
+    return items
+
+
+@router.post("/groups", response_model=GroupOut, status_code=201)
+async def create_group(
+    payload: GroupCreate, db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    if payload.app_role not in VALID_GROUP_ROLES:
+        raise HTTPException(status_code=400, detail=f"app_role must be one of {VALID_GROUP_ROLES}")
+    existing = (await db.execute(select(Group).where(Group.name == payload.name))).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail="Group with this name already exists")
+    group = Group(
+        name=payload.name, ad_group_name=payload.ad_group_name,
+        app_role=payload.app_role, description=payload.description,
+    )
+    db.add(group)
+    await log_action(db, "group", str(group.id), "create", current_user.id, new_data=payload.model_dump())
+    await db.commit()
+    await db.refresh(group)
+    return GroupOut(
+        id=group.id, name=group.name, ad_group_name=group.ad_group_name,
+        app_role=group.app_role, description=group.description,
+        member_count=0, created_at=group.created_at,
+    )
+
+
+@router.patch("/groups/{group_id}", response_model=GroupOut)
+async def update_group(
+    group_id: uuid.UUID, patch: GroupPatch,
+    db: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin),
+):
+    group = (await db.execute(select(Group).where(Group.id == group_id))).scalar_one_or_none()
+    if group is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    changes = patch.model_dump(exclude_unset=True)
+    if "app_role" in changes and changes["app_role"] not in VALID_GROUP_ROLES:
+        raise HTTPException(status_code=400, detail=f"app_role must be one of {VALID_GROUP_ROLES}")
+    for field, value in changes.items():
+        setattr(group, field, value)
+    await log_action(db, "group", str(group_id), "update", current_user.id, new_data=changes)
+    await db.commit()
+    await db.refresh(group)
+    count = (await db.execute(
+        select(func.count()).select_from(UserGroup).where(UserGroup.group_id == group.id)
+    )).scalar_one()
+    return GroupOut(
+        id=group.id, name=group.name, ad_group_name=group.ad_group_name,
+        app_role=group.app_role, description=group.description,
+        member_count=count, created_at=group.created_at,
+    )
+
+
+@router.delete("/groups/{group_id}", status_code=204)
+async def delete_group(
+    group_id: uuid.UUID, db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    group = (await db.execute(select(Group).where(Group.id == group_id))).scalar_one_or_none()
+    if group is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    await log_action(db, "group", str(group_id), "delete", current_user.id)
+    await db.delete(group)
+    await db.commit()
+
+
+@router.get("/groups/{group_id}/members", response_model=list[UserGroupOut])
+async def list_group_members(
+    group_id: uuid.UUID, db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    group = (await db.execute(select(Group).where(Group.id == group_id))).scalar_one_or_none()
+    if group is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    rows = (await db.execute(select(UserGroup).where(UserGroup.group_id == group_id))).scalars().all()
+    items = []
+    for ug in rows:
+        await db.refresh(ug, ["user"])
+        items.append(UserGroupOut(
+            id=ug.id, user_id=ug.user_id, user_name=ug.user.name,
+            user_email=ug.user.email, synced_at=ug.synced_at,
+        ))
+    return items
+
+
+@router.post("/groups/{group_id}/members", response_model=UserGroupOut, status_code=201)
+async def add_group_member(
+    group_id: uuid.UUID, payload: AddMember,
+    db: AsyncSession = Depends(get_db), current_user: User = Depends(require_admin),
+):
+    group = (await db.execute(select(Group).where(Group.id == group_id))).scalar_one_or_none()
+    if group is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    user = (await db.execute(select(User).where(User.id == payload.user_id))).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    existing = (await db.execute(
+        select(UserGroup).where(UserGroup.user_id == payload.user_id, UserGroup.group_id == group_id)
+    )).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail="User already in group")
+    ug = UserGroup(user_id=payload.user_id, group_id=group_id)
+    db.add(ug)
+    await db.commit()
+    await db.refresh(ug, ["user"])
+    return UserGroupOut(
+        id=ug.id, user_id=ug.user_id, user_name=ug.user.name,
+        user_email=ug.user.email, synced_at=ug.synced_at,
+    )
+
+
+@router.delete("/groups/{group_id}/members/{user_id}", status_code=204)
+async def remove_group_member(
+    group_id: uuid.UUID, user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db), _: User = Depends(require_admin),
+):
+    ug = (await db.execute(
+        select(UserGroup).where(UserGroup.user_id == user_id, UserGroup.group_id == group_id)
+    )).scalar_one_or_none()
+    if ug is None:
+        raise HTTPException(status_code=404, detail="Membership not found")
+    await db.delete(ug)
+    await db.commit()

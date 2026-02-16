@@ -1,13 +1,16 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Database } from "lucide-react";
-import { getDatabases, type DbConnection, type Paginated } from "../api/catalog";
+import { getDatabases } from "../api/catalog";
 
 export default function DatabaseListPage() {
-  const [data, setData] = useState<Paginated<DbConnection> | null>(null);
   const [page, setPage] = useState(1);
 
-  useEffect(() => { getDatabases(page).then(setData); }, [page]);
+  const { data } = useQuery({
+    queryKey: ["databases", page],
+    queryFn: () => getDatabases(page),
+  });
 
   if (!data) return <div className="text-gray-400">Loading...</div>;
 

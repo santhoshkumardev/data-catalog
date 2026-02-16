@@ -15,6 +15,7 @@ from app.auth.jwt import create_access_token, decode_access_token
 from app.config import settings
 from app.database import get_db
 from app.middleware.rate_limit import limiter
+from app.models.group import Group, UserGroup
 from app.models.user import User
 from app.redis_client import blacklist_token
 
@@ -60,8 +61,11 @@ if settings.oidc_issuer_url:
 PROVIDERS = {"google", "azure", "oidc"}
 
 
+ROLE_PRIORITY = {"admin": 3, "steward": 2, "viewer": 1}
+
+
 def _resolve_role_from_groups(groups: list[str] | None) -> str | None:
-    """Map AD/OIDC group membership to application role."""
+    """Map AD/OIDC group membership to application role (legacy env-var mapping)."""
     if not groups:
         return None
     if settings.oidc_admin_group and settings.oidc_admin_group in groups:
@@ -69,6 +73,41 @@ def _resolve_role_from_groups(groups: list[str] | None) -> str | None:
     if settings.oidc_steward_group and settings.oidc_steward_group in groups:
         return "steward"
     return "viewer"
+
+
+async def _sync_user_groups(db, user: User, ad_groups: list[str]) -> str | None:
+    """Sync AD group claims → user_groups table and derive effective role."""
+    # Store raw AD group names on user
+    user.ad_groups = ad_groups
+
+    # Find all application groups that match any of the user's AD groups
+    matched = (await db.execute(
+        select(Group).where(Group.ad_group_name.in_(ad_groups))
+    )).scalars().all()
+
+    matched_ids = {g.id for g in matched}
+
+    # Remove user_groups not matching current AD groups
+    existing_ugs = (await db.execute(
+        select(UserGroup).where(UserGroup.user_id == user.id)
+    )).scalars().all()
+
+    for ug in existing_ugs:
+        if ug.group_id not in matched_ids:
+            await db.delete(ug)
+
+    existing_group_ids = {ug.group_id for ug in existing_ugs}
+
+    # Add new memberships
+    for g in matched:
+        if g.id not in existing_group_ids:
+            db.add(UserGroup(user_id=user.id, group_id=g.id))
+
+    # Derive highest role from matched groups
+    if not matched:
+        return None
+    best_role = max(matched, key=lambda g: ROLE_PRIORITY.get(g.app_role, 0))
+    return best_role.app_role
 
 
 @router.get("/providers")
@@ -128,8 +167,15 @@ async def callback(provider: str, request: Request, db: AsyncSession = Depends(g
         db.add(user)
         await db.commit()
         await db.refresh(user)
+
+    # Sync AD groups → user_groups and derive effective role
+    if groups:
+        db_role = await _sync_user_groups(db, user, groups)
+        if db_role:
+            user.role = db_role
+        elif group_role is not None:
+            user.role = group_role
     elif group_role is not None:
-        # Sync role on every OIDC login (group membership may change)
         user.role = group_role
 
     user.last_login = datetime.now(timezone.utc)

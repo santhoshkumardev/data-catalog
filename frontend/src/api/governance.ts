@@ -67,6 +67,59 @@ export const grantPermission = (data: { user_id: string; entity_type: string; en
 export const revokePermission = (id: string) =>
   api.delete(`/api/v1/governance/permissions/${id}`);
 
+// User Lookup (for assignment dropdowns)
+export const getUsersForAssignment = () =>
+  api.get<{ id: string; name: string; email: string }[]>("/api/v1/governance/users").then((r) => r.data);
+
+// Stewardship
+export interface Steward {
+  id: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  entity_type: string;
+  entity_id: string;
+  created_at: string;
+}
+
+export const getStewards = (entityType: string, entityId: string) =>
+  api.get<Steward[]>(`/api/v1/governance/stewards/${entityType}/${entityId}`).then((r) => r.data);
+
+export const assignSteward = (data: { user_id: string; entity_type: string; entity_id: string }) =>
+  api.post<Steward>("/api/v1/governance/stewards", data).then((r) => r.data);
+
+export const removeSteward = (entityType: string, entityId: string, userId: string) =>
+  api.delete(`/api/v1/governance/stewards/${entityType}/${entityId}/${userId}`);
+
+// Endorsements
+export interface EndorsementDoc {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  status: "endorsed" | "warned" | "deprecated";
+  comment?: string;
+  endorsed_by?: string;
+  endorser_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const getEndorsement = (entityType: string, entityId: string) =>
+  api.get<EndorsementDoc | null>(`/api/v1/governance/endorsements/${entityType}/${entityId}`).then((r) => r.data);
+
+export const setEndorsement = (data: { entity_type: string; entity_id: string; status: string; comment?: string }) =>
+  api.put<EndorsementDoc>("/api/v1/governance/endorsements", data).then((r) => r.data);
+
+export const removeEndorsement = (entityType: string, entityId: string) =>
+  api.delete(`/api/v1/governance/endorsements/${entityType}/${entityId}`);
+
+export interface EndorsementBatchResult {
+  results: Record<string, EndorsementDoc | null>;
+}
+
+export const batchEndorsements = (keys: { entity_type: string; entity_id: string }[]) =>
+  api.post<EndorsementBatchResult>("/api/v1/governance/endorsements/batch", { keys }).then((r) => r.data);
+
 // Column Profiling
 export interface ColumnProfile {
   id: string;
