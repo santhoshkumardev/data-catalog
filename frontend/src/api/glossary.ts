@@ -12,6 +12,7 @@ export interface GlossaryTerm {
   creator_name?: string;
   created_at: string;
   updated_at: string;
+  links?: TermLink[];
 }
 
 export interface TermLink {

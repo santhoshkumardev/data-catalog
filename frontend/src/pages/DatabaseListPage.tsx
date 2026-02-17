@@ -25,7 +25,6 @@ export default function DatabaseListPage() {
               <span className="font-semibold">{db.name}</span>
               <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{db.db_type}</span>
             </div>
-            {db.description && <p className="text-sm text-gray-500 mt-1">{db.description}</p>}
             {db.tags && db.tags.length > 0 && (
               <div className="flex gap-1 mt-2">
                 {db.tags.map((t) => <span key={t} className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{t}</span>)}

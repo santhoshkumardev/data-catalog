@@ -73,7 +73,14 @@ export default function RichTextEditor({ content, onChange, placeholder = "Write
           <Redo size={16} />
         </ToolbarBtn>
       </div>
-      <EditorContent editor={editor} className="prose prose-sm max-w-none p-3 min-h-[120px] focus:outline-none" />
+      <EditorContent
+        editor={editor}
+        className={[
+          "prose prose-sm max-w-none",
+          "[&_.ProseMirror]:p-3 [&_.ProseMirror]:min-h-[120px] [&_.ProseMirror]:outline-none",
+          "[&_.ProseMirror>*:first-child]:mt-0 [&_.ProseMirror>*:last-child]:mb-0",
+        ].join(" ")}
+      />
     </div>
   );
 }

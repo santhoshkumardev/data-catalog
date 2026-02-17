@@ -12,10 +12,10 @@ export interface Comment {
 }
 
 export const getComments = (entity_type: string, entity_id: string) =>
-  api.get<Comment[]>("/api/v1/comments", { params: { entity_type, entity_id } }).then((r) => r.data);
+  api.get<Comment[]>(`/api/v1/comments/${entity_type}/${entity_id}`).then((r) => r.data);
 
 export const addComment = (entity_type: string, entity_id: string, body: string) =>
-  api.post<Comment>("/api/v1/comments", { entity_type, entity_id, body }).then((r) => r.data);
+  api.post<Comment>(`/api/v1/comments/${entity_type}/${entity_id}`, { body }).then((r) => r.data);
 
 export const deleteComment = (id: string) =>
   api.delete(`/api/v1/comments/${id}`);
