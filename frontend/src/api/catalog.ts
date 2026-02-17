@@ -15,6 +15,7 @@ export interface Schema {
   id: string;
   connection_id: string;
   name: string;
+  title?: string;
   description?: string;
   tags?: string[];
   deleted_at?: string;
@@ -26,6 +27,7 @@ export interface Table {
   id: string;
   schema_id: string;
   name: string;
+  title?: string;
   description?: string;
   tags?: string[];
   sme_name?: string;
@@ -103,8 +105,8 @@ export interface Stats {
 }
 
 // Databases
-export const getDatabases = (page = 1, size = 20) =>
-  api.get<Paginated<DbConnection>>("/api/v1/databases", { params: { page, size } }).then((r) => r.data);
+export const getDatabases = (page = 1, size = 20, q?: string) =>
+  api.get<Paginated<DbConnection>>("/api/v1/databases", { params: { page, size, ...(q ? { q } : {}) } }).then((r) => r.data);
 
 export const getDatabase = (id: string) =>
   api.get<DbConnection>(`/api/v1/databases/${id}`).then((r) => r.data);
@@ -113,25 +115,25 @@ export const patchDatabase = (id: string, data: { description?: string; tags?: s
   api.patch<DbConnection>(`/api/v1/databases/${id}`, data).then((r) => r.data);
 
 // Schemas
-export const getSchemas = (dbId: string, page = 1, size = 20, include_deleted = false) =>
-  api.get<Paginated<Schema>>(`/api/v1/databases/${dbId}/schemas`, { params: { page, size, include_deleted } }).then((r) => r.data);
+export const getSchemas = (dbId: string, page = 1, size = 20, include_deleted = false, q?: string) =>
+  api.get<Paginated<Schema>>(`/api/v1/databases/${dbId}/schemas`, { params: { page, size, include_deleted, ...(q ? { q } : {}) } }).then((r) => r.data);
 
 export const getSchema = (id: string) =>
   api.get<Schema>(`/api/v1/schemas/${id}`).then((r) => r.data);
 
-export const patchSchema = (id: string, data: { description?: string; tags?: string[] }) =>
+export const patchSchema = (id: string, data: { title?: string; description?: string; tags?: string[] }) =>
   api.patch<Schema>(`/api/v1/schemas/${id}`, data).then((r) => r.data);
 
 // Tables
-export const getTables = (schemaId: string, page = 1, size = 20, include_deleted = false) =>
-  api.get<Paginated<Table>>(`/api/v1/schemas/${schemaId}/tables`, { params: { page, size, include_deleted } }).then((r) => r.data);
+export const getTables = (schemaId: string, page = 1, size = 20, include_deleted = false, q?: string) =>
+  api.get<Paginated<Table>>(`/api/v1/schemas/${schemaId}/tables`, { params: { page, size, include_deleted, ...(q ? { q } : {}) } }).then((r) => r.data);
 
 export const getTable = (id: string) =>
   api.get<Table>(`/api/v1/tables/${id}`).then((r) => r.data);
 
 export const patchTable = (
   id: string,
-  data: { description?: string; tags?: string[]; sme_name?: string; sme_email?: string }
+  data: { title?: string; description?: string; tags?: string[]; sme_name?: string; sme_email?: string }
 ) => api.patch<Table>(`/api/v1/tables/${id}`, data).then((r) => r.data);
 
 // Columns
@@ -184,8 +186,8 @@ export interface QueryCreate {
   sql_text: string;
 }
 
-export const getQueries = (page = 1, size = 20, db_id?: string) =>
-  api.get<Paginated<QueryDoc>>("/api/v1/queries", { params: { page, size, ...(db_id ? { db_id } : {}) } }).then((r) => r.data);
+export const getQueries = (page = 1, size = 20, db_id?: string, q?: string) =>
+  api.get<Paginated<QueryDoc>>("/api/v1/queries", { params: { page, size, ...(db_id ? { db_id } : {}), ...(q ? { q } : {}) } }).then((r) => r.data);
 
 export const getQuery = (id: string) =>
   api.get<QueryDoc>(`/api/v1/queries/${id}`).then((r) => r.data);
@@ -296,8 +298,8 @@ export interface ArticleDoc {
   attachments: AttachmentMeta[];
 }
 
-export const getArticles = (page = 1, size = 20) =>
-  api.get<Paginated<ArticleDoc>>("/api/v1/articles", { params: { page, size } }).then((r) => r.data);
+export const getArticles = (page = 1, size = 20, q?: string) =>
+  api.get<Paginated<ArticleDoc>>("/api/v1/articles", { params: { page, size, ...(q ? { q } : {}) } }).then((r) => r.data);
 
 export const getArticle = (id: string) =>
   api.get<ArticleDoc>(`/api/v1/articles/${id}`).then((r) => r.data);

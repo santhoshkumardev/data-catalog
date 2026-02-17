@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Database, Layers, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Database, Layers } from "lucide-react";
 import { getDatabase, getSchemas, patchDatabase } from "../api/catalog";
 import { trackView } from "../api/analytics";
 import { useAuth } from "../auth/AuthContext";
@@ -12,13 +12,23 @@ import CommentSection from "../components/CommentSection";
 import VersionHistory from "../components/VersionHistory";
 import StewardSection from "../components/StewardSection";
 import EndorsementBadge from "../components/EndorsementBadge";
+import Pagination from "../components/Pagination";
 
 export default function DatabaseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { isEditor } = useAuth();
   const [tab, setTab] = useState<"schemas" | "comments" | "history">("schemas");
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const { data: db, refetch: refetchDb } = useQuery({
     queryKey: ["database", id],
@@ -27,27 +37,19 @@ export default function DatabaseDetailPage() {
   });
 
   const { data: schemasData } = useQuery({
-    queryKey: ["schemas", id],
-    queryFn: () => getSchemas(id!, 1, 50, true),
+    queryKey: ["schemas", id, page, debouncedSearch],
+    queryFn: () => getSchemas(id!, page, 20, true, debouncedSearch || undefined),
     enabled: !!id,
   });
 
   const schemas = schemasData?.items ?? [];
+  const totalPages = schemasData ? Math.ceil(schemasData.total / schemasData.size) : 0;
 
   useEffect(() => {
     if (id) trackView("database", id);
   }, [id]);
 
   if (!db) return <div className="text-gray-400">Loading...</div>;
-
-  const filteredSchemas = schemas.filter((s) =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-  const sortedSchemas = sortDir
-    ? [...filteredSchemas].sort((a, b) =>
-        sortDir === "asc" ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)
-      )
-    : filteredSchemas;
 
   return (
     <div>
@@ -83,7 +85,7 @@ export default function DatabaseDetailPage() {
           onClick={() => setTab("schemas")}
           className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === "schemas" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
         >
-          Schemas ({schemas.length})
+          Schemas {schemasData ? `(${schemasData.total})` : ""}
         </button>
         <button
           onClick={() => setTab("comments")}
@@ -115,32 +117,17 @@ export default function DatabaseDetailPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="text-left px-4 py-2 font-medium text-gray-600">
-                    <button
-                      onClick={() => setSortDir((d) => d === null ? "asc" : d === "asc" ? "desc" : null)}
-                      className="flex items-center gap-1 hover:text-blue-600 focus:outline-none"
-                      title="Sort by name"
-                    >
-                      Name
-                      {sortDir === "asc" ? (
-                        <ArrowUp size={13} className="text-blue-600" />
-                      ) : sortDir === "desc" ? (
-                        <ArrowDown size={13} className="text-blue-600" />
-                      ) : (
-                        <ArrowUpDown size={13} className="text-gray-400" />
-                      )}
-                    </button>
-                  </th>
+                  <th className="text-left px-4 py-2 font-medium text-gray-600">Name</th>
                 </tr>
               </thead>
               <tbody>
-                {sortedSchemas.length === 0 ? (
+                {schemas.length === 0 ? (
                   <tr>
                     <td className="px-4 py-6 text-center text-gray-400 text-sm">
                       {searchQuery ? "No schemas match your search." : "No schemas found."}
                     </td>
                   </tr>
-                ) : sortedSchemas.map((s) => {
+                ) : schemas.map((s) => {
                   const isDeleted = !!s.deleted_at;
                   return (
                     <tr key={s.id} className={`border-b hover:bg-gray-50 ${isDeleted ? "opacity-50" : ""}`}>
@@ -148,7 +135,7 @@ export default function DatabaseDetailPage() {
                         <div className="flex items-center gap-2">
                           <Layers size={15} className="text-purple-500" />
                           <Link to={`/schemas/${s.id}`} className={`font-medium text-blue-600 hover:underline ${isDeleted ? "line-through" : ""}`}>
-                            {s.name}
+                            {s.title ? `${s.title} (${s.name})` : s.name}
                           </Link>
                           {!isDeleted && <EndorsementBadge entityType="schema" entityId={s.id} />}
                           {isDeleted && (
@@ -164,6 +151,7 @@ export default function DatabaseDetailPage() {
               </tbody>
             </table>
           </div>
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       )}
 

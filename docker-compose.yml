@@ -83,13 +83,12 @@ services:
       minio:
         condition: service_healthy
 
+
   frontend:
     build: ./frontend
     restart: unless-stopped
     ports:
       - "3001:80"
-    depends_on:
-      - backend
 
 volumes:
   postgres_data:

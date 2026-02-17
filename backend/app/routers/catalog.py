@@ -24,8 +24,8 @@ from app.services.search_sync import sync_database, sync_column, sync_schema, sy
 router = APIRouter(prefix="/api/v1", tags=["catalog"])
 
 ALLOWED_DB_PATCH = {"description", "tags"}
-ALLOWED_SCHEMA_PATCH = {"description", "tags"}
-ALLOWED_TABLE_PATCH = {"description", "tags", "sme_name", "sme_email"}
+ALLOWED_SCHEMA_PATCH = {"description", "tags", "title"}
+ALLOWED_TABLE_PATCH = {"description", "tags", "title", "sme_name", "sme_email"}
 ALLOWED_COLUMN_PATCH = {"description", "tags", "title"}
 
 
@@ -50,7 +50,7 @@ async def list_databases(
         stmt = stmt.where(DbConnection.name.ilike(like_q) | DbConnection.description.ilike(like_q))
         count_stmt = count_stmt.where(DbConnection.name.ilike(like_q) | DbConnection.description.ilike(like_q))
     total = (await db.execute(count_stmt)).scalar_one()
-    items = (await db.execute(stmt.offset((page - 1) * size).limit(size))).scalars().all()
+    items = (await db.execute(stmt.order_by(DbConnection.name.asc()).offset((page - 1) * size).limit(size))).scalars().all()
     return PaginatedDbConnections(total=total, page=page, size=size, items=list(items))
 
 
@@ -89,13 +89,20 @@ async def patch_database(
 @router.get("/databases/{db_id}/schemas", response_model=PaginatedSchemas)
 async def list_schemas(
     db_id: uuid.UUID, page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100),
+    q: str = Query(None),
     include_deleted: bool = Query(False),
     db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user),
 ):
     base = Schema.connection_id == db_id
     filters = [base] if include_deleted else [base, Schema.deleted_at.is_(None)]
-    total = (await db.execute(select(func.count()).select_from(Schema).where(*filters))).scalar_one()
-    items = (await db.execute(select(Schema).where(*filters).offset((page - 1) * size).limit(size))).scalars().all()
+    stmt = select(Schema).where(*filters)
+    count_stmt = select(func.count()).select_from(Schema).where(*filters)
+    if q:
+        like_q = f"%{q}%"
+        stmt = stmt.where(Schema.name.ilike(like_q) | Schema.description.ilike(like_q))
+        count_stmt = count_stmt.where(Schema.name.ilike(like_q) | Schema.description.ilike(like_q))
+    total = (await db.execute(count_stmt)).scalar_one()
+    items = (await db.execute(stmt.order_by(Schema.name.asc()).offset((page - 1) * size).limit(size))).scalars().all()
     return PaginatedSchemas(total=total, page=page, size=size, items=list(items))
 
 
@@ -152,7 +159,7 @@ async def list_tables(
         stmt = stmt.where(Table.name.ilike(like_q) | Table.description.ilike(like_q))
         count_stmt = count_stmt.where(Table.name.ilike(like_q) | Table.description.ilike(like_q))
     total = (await db.execute(count_stmt)).scalar_one()
-    items = (await db.execute(stmt.offset((page - 1) * size).limit(size))).scalars().all()
+    items = (await db.execute(stmt.order_by(Table.name.asc()).offset((page - 1) * size).limit(size))).scalars().all()
     return PaginatedTables(total=total, page=page, size=size, items=list(items))
 
 
