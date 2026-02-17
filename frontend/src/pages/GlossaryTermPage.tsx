@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { BookText, Trash2, Link2, Unlink } from "lucide-react";
-import { getGlossaryTerm, patchGlossaryTerm, deleteGlossaryTerm, getTermLinks, unlinkTerm, type GlossaryTerm, type TermLink } from "../api/glossary";
+import { getGlossaryTerm, patchGlossaryTerm, deleteGlossaryTerm, unlinkTerm, type GlossaryTerm, type TermLink } from "../api/glossary";
 import { trackView } from "../api/analytics";
 import { useAuth } from "../auth/AuthContext";
 import Breadcrumb from "../components/Breadcrumb";
@@ -28,8 +28,10 @@ export default function GlossaryTermPage() {
 
   useEffect(() => {
     if (!id) return;
-    getGlossaryTerm(id).then(setTerm);
-    getTermLinks(id).then(setLinks);
+    getGlossaryTerm(id).then((t) => {
+      setTerm(t);
+      setLinks(t.links ?? []);
+    });
     trackView("glossary", id);
   }, [id]);
 

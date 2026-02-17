@@ -393,6 +393,6 @@ export interface AuditLogEntry {
 }
 
 export const getAuditLog = (page = 1, size = 20, entity_type?: string, entity_id?: string) =>
-  api.get<Paginated<AuditLogEntry>>("/api/v1/admin/audit-log", {
+  api.get<Paginated<AuditLogEntry>>("/api/v1/admin/audit", {
     params: { page, size, ...(entity_type ? { entity_type } : {}), ...(entity_id ? { entity_id } : {}) },
   }).then((r) => r.data);

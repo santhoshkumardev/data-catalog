@@ -112,9 +112,14 @@ async def patch_schema(
     schema_id: uuid.UUID, patch: SchemaPatch,
     db: AsyncSession = Depends(get_db), current_user: User = Depends(require_steward),
 ):
-    row = (await db.execute(select(Schema).where(Schema.id == schema_id, Schema.deleted_at.is_(None)))).scalar_one_or_none()
+    row = (await db.execute(
+        select(Schema)
+        .where(Schema.id == schema_id, Schema.deleted_at.is_(None))
+        .options(selectinload(Schema.connection))
+    )).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Schema not found")
+    _db_name = row.connection.name
     changes = {k: v for k, v in patch.model_dump(exclude_unset=True).items() if k in ALLOWED_SCHEMA_PATCH}
     if "description" in changes and changes["description"]:
         changes["description"] = nh3.clean(changes["description"])
@@ -124,7 +129,7 @@ async def patch_schema(
     await log_action(db, "schema", str(schema_id), "update", current_user.id, old_data, changes)
     await db.commit()
     await db.refresh(row)
-    sync_schema(row)
+    sync_schema(row, db_name=_db_name)
     return row
 
 
@@ -164,9 +169,16 @@ async def patch_table(
     table_id: uuid.UUID, patch: TablePatch,
     db: AsyncSession = Depends(get_db), current_user: User = Depends(require_steward),
 ):
-    row = (await db.execute(select(Table).where(Table.id == table_id, Table.deleted_at.is_(None)))).scalar_one_or_none()
+    row = (await db.execute(
+        select(Table)
+        .where(Table.id == table_id, Table.deleted_at.is_(None))
+        .options(selectinload(Table.schema).selectinload(Schema.connection))
+    )).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Table not found")
+    _schema_name = row.schema.name
+    _db_name = row.schema.connection.name
+    _connection_id = str(row.schema.connection_id)
     changes = {k: v for k, v in patch.model_dump(exclude_unset=True).items() if k in ALLOWED_TABLE_PATCH}
     if "description" in changes and changes["description"]:
         changes["description"] = nh3.clean(changes["description"])
@@ -176,7 +188,7 @@ async def patch_table(
     await log_action(db, "table", str(table_id), "update", current_user.id, old_data, changes)
     await db.commit()
     await db.refresh(row)
-    sync_table(row)
+    sync_table(row, db_name=_db_name, schema_name=_schema_name, connection_id=_connection_id)
     return row
 
 
@@ -192,7 +204,7 @@ async def list_columns(
     if not include_deleted:
         filters.append(Column.deleted_at.is_(None))
     total = (await db.execute(select(func.count()).select_from(Column).where(*filters))).scalar_one()
-    items = (await db.execute(select(Column).where(*filters).offset((page - 1) * size).limit(size))).scalars().all()
+    items = (await db.execute(select(Column).where(*filters).order_by(Column.name).offset((page - 1) * size).limit(size))).scalars().all()
     return PaginatedColumns(total=total, page=page, size=size, items=list(items))
 
 
@@ -209,9 +221,19 @@ async def patch_column(
     column_id: uuid.UUID, patch: ColumnPatch,
     db: AsyncSession = Depends(get_db), current_user: User = Depends(require_steward),
 ):
-    row = (await db.execute(select(Column).where(Column.id == column_id, Column.deleted_at.is_(None)))).scalar_one_or_none()
+    row = (await db.execute(
+        select(Column)
+        .where(Column.id == column_id, Column.deleted_at.is_(None))
+        .options(selectinload(Column.table).selectinload(Table.schema).selectinload(Schema.connection))
+    )).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Column not found")
+    # Capture sync metadata before commit (relationships expire after session flush)
+    _table_name = row.table.name
+    _schema_name = row.table.schema.name
+    _db_name = row.table.schema.connection.name
+    _connection_id = str(row.table.schema.connection_id)
+    _schema_id = str(row.table.schema_id)
     changes = {k: v for k, v in patch.model_dump(exclude_unset=True).items() if k in ALLOWED_COLUMN_PATCH}
     if "description" in changes and changes["description"]:
         changes["description"] = nh3.clean(changes["description"])
@@ -221,7 +243,8 @@ async def patch_column(
     await log_action(db, "column", str(column_id), "update", current_user.id, old_data, changes)
     await db.commit()
     await db.refresh(row)
-    sync_column(row)
+    sync_column(row, db_name=_db_name, schema_name=_schema_name, table_name=_table_name,
+                connection_id=_connection_id, schema_id=_schema_id)
     return row
 
 

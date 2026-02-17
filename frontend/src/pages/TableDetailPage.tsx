@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Table2, Key, Eye, Layers, Link as LinkIcon } from "lucide-react";
+import { Table2, Key, Eye, Layers, Link as LinkIcon, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { getTableContext, getColumns, patchTable, patchColumn, type Column } from "../api/catalog";
 import { getClassification, type Classification } from "../api/governance";
 import { trackView } from "../api/analytics";
@@ -26,6 +26,7 @@ export default function TableDetailPage() {
   const [expandedCol, setExpandedCol] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [colPage, setColPage] = useState(1);
+  const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
   const COL_PAGE_SIZE = 25;
 
   const { data: ctx, refetch: refetchCtx } = useQuery({
@@ -126,8 +127,13 @@ export default function TableDetailPage() {
 
       {tab === "columns" && (() => {
         const filteredColumns = columns.filter((c) => c.name.toLowerCase().includes(searchQuery.toLowerCase()));
-        const totalColPages = Math.ceil(filteredColumns.length / COL_PAGE_SIZE);
-        const pagedColumns = filteredColumns.slice((colPage - 1) * COL_PAGE_SIZE, colPage * COL_PAGE_SIZE);
+        const sortedColumns = sortDir
+          ? [...filteredColumns].sort((a, b) =>
+              sortDir === "asc" ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)
+            )
+          : filteredColumns;
+        const totalColPages = Math.ceil(sortedColumns.length / COL_PAGE_SIZE);
+        const pagedColumns = sortedColumns.slice((colPage - 1) * COL_PAGE_SIZE, colPage * COL_PAGE_SIZE);
         return (
           <div>
             <div className="mb-3">
@@ -143,7 +149,25 @@ export default function TableDetailPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b">
                   <tr>
-                    <th className="text-left px-4 py-2 font-medium text-gray-600">Name</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">
+                      <button
+                        onClick={() => {
+                          setSortDir((d) => d === null ? "asc" : d === "asc" ? "desc" : null);
+                          setColPage(1);
+                        }}
+                        className="flex items-center gap-1 hover:text-blue-600 focus:outline-none"
+                        title="Sort by name"
+                      >
+                        Name
+                        {sortDir === "asc" ? (
+                          <ArrowUp size={13} className="text-blue-600" />
+                        ) : sortDir === "desc" ? (
+                          <ArrowDown size={13} className="text-blue-600" />
+                        ) : (
+                          <ArrowUpDown size={13} className="text-gray-400" />
+                        )}
+                      </button>
+                    </th>
                     <th className="text-left px-4 py-2 font-medium text-gray-600">Title</th>
                     <th className="text-left px-4 py-2 font-medium text-gray-600">Type</th>
                     <th className="text-left px-4 py-2 font-medium text-gray-600">Nullable</th>
@@ -185,10 +209,10 @@ export default function TableDetailPage() {
                 </tbody>
               </table>
             </div>
-            {filteredColumns.length > COL_PAGE_SIZE && (
+            {sortedColumns.length > COL_PAGE_SIZE && (
               <div className="flex items-center justify-between mt-3 text-sm">
                 <span className="text-gray-500">
-                  Showing {(colPage - 1) * COL_PAGE_SIZE + 1}–{Math.min(colPage * COL_PAGE_SIZE, filteredColumns.length)} of {filteredColumns.length} columns
+                  Showing {(colPage - 1) * COL_PAGE_SIZE + 1}–{Math.min(colPage * COL_PAGE_SIZE, sortedColumns.length)} of {sortedColumns.length} columns
                 </span>
                 <div className="flex gap-2">
                   <button
