@@ -78,8 +78,8 @@ export default function TableDetailPage() {
       <Breadcrumb items={[
         { label: "Databases", to: "/databases" },
         { label: db.name, to: `/databases/${db.id}` },
-        { label: schema.name, to: `/schemas/${schema.id}` },
-        { label: table.name },
+        { label: schema.title ? `${schema.title} (${schema.name})` : schema.name, to: `/schemas/${schema.id}` },
+        { label: table.title ? `${table.title} (${table.name})` : table.name },
       ]} />
 
       {table.deleted_at && (
@@ -91,12 +91,16 @@ export default function TableDetailPage() {
       <div className={`bg-white rounded-lg border p-6 mb-6 ${table.deleted_at ? "opacity-60" : ""}`}>
         <div className="flex items-center gap-3 mb-4">
           {objectTypeIcon}
-          <h1 className="text-xl font-bold">{table.name}</h1>
+          <h1 className="text-xl font-bold">{table.title ? `${table.title} (${table.name})` : table.name}</h1>
           <EndorsementBadge entityType="table" entityId={id!} />
           {objectTypeBadge}
           {classification && <ClassificationBadge level={classification.level} />}
           {table.row_count != null && <span className="text-sm text-gray-400">{table.row_count.toLocaleString()} rows</span>}
 
+        </div>
+        <div className="mb-4">
+          <div className="text-xs text-gray-400 mb-1">Title</div>
+          <InlineEdit value={table.title || ""} onSave={async (v) => { await patchTable(id!, { title: v }); refetchCtx(); }} canEdit={isEditor} />
         </div>
         <div className="grid grid-cols-2 gap-6">
           <div>

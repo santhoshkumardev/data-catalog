@@ -121,7 +121,7 @@ export const getSchemas = (dbId: string, page = 1, size = 20, include_deleted = 
 export const getSchema = (id: string) =>
   api.get<Schema>(`/api/v1/schemas/${id}`).then((r) => r.data);
 
-export const patchSchema = (id: string, data: { description?: string; tags?: string[] }) =>
+export const patchSchema = (id: string, data: { title?: string; description?: string; tags?: string[] }) =>
   api.patch<Schema>(`/api/v1/schemas/${id}`, data).then((r) => r.data);
 
 // Tables
@@ -133,7 +133,7 @@ export const getTable = (id: string) =>
 
 export const patchTable = (
   id: string,
-  data: { description?: string; tags?: string[]; sme_name?: string; sme_email?: string }
+  data: { title?: string; description?: string; tags?: string[]; sme_name?: string; sme_email?: string }
 ) => api.patch<Table>(`/api/v1/tables/${id}`, data).then((r) => r.data);
 
 // Columns

@@ -70,6 +70,10 @@ export default function SchemaDetailPage() {
           <EndorsementBadge entityType="schema" entityId={id!} />
         </div>
         <div className="mb-4">
+          <div className="text-xs text-gray-400 mb-1">Title</div>
+          <InlineEdit value={schema.title || ""} onSave={async (v) => { await patchSchema(id!, { title: v }); refetchSchema(); }} canEdit={isEditor} />
+        </div>
+        <div className="mb-4">
           <div className="text-xs text-gray-400 mb-1">Description</div>
           <InlineEdit value={schema.description || ""} onSave={async (v) => { await patchSchema(id!, { description: v }); refetchSchema(); }} multiline canEdit={isEditor} />
         </div>
