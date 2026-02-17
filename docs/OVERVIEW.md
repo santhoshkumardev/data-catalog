@@ -2,7 +2,7 @@
 
 ## What is Data Catalog?
 
-Data Catalog is an enterprise-grade metadata management and data governance platform. It provides a centralized hub for discovering, understanding, and governing data assets across multiple databases and data systems. Teams use it to browse database hierarchies, search for tables and columns, trace data lineage, enforce governance policies, collaborate through comments and documentation, and run ad-hoc queries — all from a single web interface.
+Data Catalog is an enterprise-grade metadata management and data governance platform. It provides a centralized hub for discovering, understanding, and governing data assets across multiple databases and data systems. Teams use it to browse database hierarchies, search for tables and columns, trace data lineage, enforce governance policies, collaborate through comments and documentation, and manage saved SQL queries — all from a single web interface.
 
 ## Core Capabilities
 
@@ -15,6 +15,8 @@ The catalog organizes metadata in a four-level hierarchy: Database > Schema > Ta
 - A collapsible sidebar tree showing all databases, schemas, and tables
 - Dedicated detail pages for each level with editable descriptions, tags, and SME contacts
 - Breadcrumb navigation for quick traversal between levels
+- Tabbed layouts on Database and Schema pages (Schemas/Tables | Comments | Version History) for a clean, focused view
+- Search and sort by name at every level — databases list schemas with search + sort; schemas list tables with search + sort; tables list columns with search + sort
 
 **Object Type Awareness**
 
@@ -35,7 +37,7 @@ Each table exposes its columns with:
 - Editable title (friendly name) and description fields
 - Tags for categorization
 - Column profiling statistics (null percentage, distinct count, min/max values, sample values)
-- Searchable and paginated column listings
+- Searchable, sortable (by name), and paginated column listings
 
 **Bulk Metadata Ingestion**
 
@@ -91,6 +93,22 @@ Stewards can gate metadata changes behind an approval process:
 2. A steward reviews the request and approves or rejects it with a comment
 3. The full workflow is captured in the audit log
 
+**Endorsements**
+
+Stewards can endorse data assets to signal trust and quality:
+
+- Three statuses: **endorsed** (trusted), **warned** (use with caution), and **deprecated** (avoid)
+- Warned and deprecated statuses require a comment explaining the reason
+- Visual badges appear on entity detail pages and in list views
+- Batch API for efficient bulk endorsement lookups
+
+**Data Stewardship**
+
+Assign data stewards to any entity for accountability:
+
+- Steward assignments visible on entity detail pages
+- Track who is responsible for data quality and governance
+
 **Resource-Level Permissions**
 
 Fine-grained access control at the individual entity level:
@@ -113,7 +131,7 @@ Every create, update, and delete action is recorded with:
 
 **Comments**
 
-Users can leave comments on any entity — tables, columns, schemas, glossary terms, articles, and more. Comments support HTML content (sanitized for safety) and can be deleted by the author or a steward.
+Users can leave comments on any entity — tables, columns, schemas, databases, glossary terms, articles, and more. Comments support rich HTML content (sanitized for safety) and can be deleted by the author or a steward. Comment threads are accessible via a dedicated tab on Database, Schema, and Table detail pages.
 
 **Favorites**
 
@@ -148,6 +166,7 @@ Define and standardize business terminology:
 
 - Create glossary terms with definitions, owners, and tags
 - Link terms to specific database entities (tables, columns) for context
+- Linked entities are displayed inline on the term detail page
 - Workflow support with draft and approved statuses
 - Searchable and browsable through a dedicated tree sidebar
 
@@ -160,17 +179,7 @@ Save, organize, and share SQL queries:
 - Associate queries with SME contacts
 - Browse queries in a sidebar tree organized by database
 
-### 8. Query Runner
-
-Execute read-only SQL queries directly from the browser:
-
-- SQL editor with syntax highlighting
-- Safety guardrails: only `SELECT`, `WITH`, and `EXPLAIN` statements allowed
-- Statement timeout of 10 seconds to prevent runaway queries
-- Results limited to 1,000 rows with truncation indicator
-- Read-only transaction mode enforced at the database level
-
-### 9. AI-Powered Discovery
+### 8. AI-Powered Discovery
 
 A context-aware AI assistant helps users find relevant data:
 
@@ -180,7 +189,7 @@ A context-aware AI assistant helps users find relevant data:
 - Suggested related search queries for further exploration
 - Integrated into the dashboard search bar
 
-### 10. Usage Analytics
+### 9. Usage Analytics
 
 Track how the catalog is being used:
 
@@ -189,7 +198,7 @@ Track how the catalog is being used:
 - **Trending entities** — resources gaining traction in the past 7 days
 - Dashboard widgets showing key statistics (database count, table count, etc.)
 
-### 11. Webhooks
+### 10. Webhooks
 
 Subscribe to catalog events for external integrations:
 
@@ -199,7 +208,7 @@ Subscribe to catalog events for external integrations:
 - Delivery history with response codes and bodies
 - Enable/disable webhooks without deleting them
 
-### 12. Administration
+### 11. Administration
 
 **User Management**
 

@@ -123,6 +123,8 @@ You should see output similar to:
 INFO  [alembic.runtime.migration] Running upgrade  -> 0001, v2 full schema
 INFO  [alembic.runtime.migration] Running upgrade 0001 -> 0002, add column title
 INFO  [alembic.runtime.migration] Running upgrade 0002 -> 0003, add object_type and view_definition to tables
+INFO  [alembic.runtime.migration] Running upgrade 0003 -> 0004, add groups and endorsements
+INFO  [alembic.runtime.migration] Running upgrade 0004 -> 0005, add stewardship assignments
 ```
 
 ## Step 5 — Create Demo Users
@@ -250,7 +252,16 @@ docker compose logs -f frontend
 
 ```bash
 # Rebuild and restart backend and frontend
-docker compose up -d --build backend frontend
+DOCKER_BUILDKIT=0 docker-compose build backend frontend
+docker compose up -d backend frontend
+```
+
+> **Note:** Use `DOCKER_BUILDKIT=0` (legacy builder) if you encounter network timeouts pulling base images. It reuses cached layers more aggressively.
+
+For Python-only backend changes (no new dependencies), a restart is sufficient — no rebuild needed:
+
+```bash
+docker compose restart backend
 ```
 
 ### Running a New Migration
@@ -301,6 +312,27 @@ TOKEN=$(curl -s -X POST http://localhost:8001/api/v1/auth/login \
 curl -X POST http://localhost:8001/api/v1/admin/reindex \
   -H "Authorization: Bearer $TOKEN"
 ```
+
+### Running Integration Tests
+
+The test suite runs against the live Docker stack. Ensure all services are up and demo users have been created before running tests.
+
+```bash
+# Install test dependencies (one-time)
+pip install -r backend/requirements-test.txt
+
+# Run all integration tests
+cd backend
+pytest tests/ -v
+```
+
+The tests cover:
+- PATCH endpoints for database, schema, table, and column metadata
+- Comment creation, retrieval, and deletion
+- Lineage edge creation, annotation, and deletion
+- Permission enforcement (403 for unauthenticated and viewer roles)
+
+> **Note:** Tests connect to the running stack at `http://localhost:8001` using the demo steward credentials (`steward@demo.com` / `steward123`) and the ingest API key (`dev-ingest-key`). A test database is created and cleaned up automatically.
 
 ### Stopping All Services
 

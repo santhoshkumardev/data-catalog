@@ -74,6 +74,7 @@
 | **TailwindCSS** | 3.4.13 | Utility-first CSS |
 | **Lucide React** | 0.447.0 | Icon library |
 | **TipTap** | 2.10.4 | Rich-text editor (articles) |
+| **TanStack Query** | 5.59.0 | Server state caching and deduplication |
 | **CodeMirror** | 4.23.7 | SQL editor |
 | **DOMPurify** | 3.1.7 | HTML sanitization |
 
@@ -109,7 +110,7 @@ Incoming HTTP Request
   └─ Router Handler          → Business logic execution
 ```
 
-### API Routers (16 total)
+### API Routers (15 total)
 
 | Router | Prefix | Auth | Description |
 |--------|--------|------|-------------|
@@ -119,7 +120,6 @@ Incoming HTTP Request
 | **ingest** | `/api/v1/ingest` | API Key | Bulk metadata and lineage ingestion |
 | **lineage** | `/api/v1` | User/Steward | Lineage graph queries and edge management |
 | **queries** | `/api/v1/queries` | User | Saved SQL query CRUD |
-| **query_runner** | `/api/v1/query-runner` | User | Read-only SQL execution |
 | **articles** | `/api/v1/articles` | User/Steward | Knowledge base articles with attachments |
 | **glossary** | `/api/v1/glossary` | User/Steward | Business glossary terms and entity links |
 | **governance** | `/api/v1/governance` | User/Steward | Classifications, approvals, permissions |
@@ -136,7 +136,7 @@ Incoming HTTP Request
 
 | Service | Responsibility |
 |---------|---------------|
-| **search_sync** | Synchronizes entity changes to Meilisearch indexes. Called after every create/update in the catalog. Supports individual sync and full reindex. |
+| **search_sync** | Synchronizes entity changes to Meilisearch indexes. Called after every create/update in the catalog. Requires explicit keyword args (`db_name`, `schema_name`, etc.) and eager-loaded relationships via SQLAlchemy `selectinload` before the session is committed. Supports individual sync and full reindex. |
 | **audit** | Records all data mutations to the audit log with old/new data snapshots and actor information. |
 | **notifications** | Creates in-app notifications for relevant events (comments, approvals, etc.). |
 | **webhooks** | Dispatches webhook events to subscribed endpoints with HMAC-signed payloads. Tracks delivery status. |
@@ -188,6 +188,8 @@ Managed by Alembic with a linear revision chain:
 | `0001` | Full initial schema (all tables, indexes, constraints) |
 | `0002` | Add `title` column to the `columns` table |
 | `0003` | Add `object_type` and `view_definition` to the `tables` table |
+| `0004` | Add user groups, group memberships, and endorsements tables |
+| `0005` | Add stewardship assignments table |
 
 ### Authentication Flow
 
@@ -267,6 +269,12 @@ src/
 ├── auth/
 │   └── AuthContext.tsx      # React context for auth state and role checks
 │
+├── hooks/                  # Custom React hooks
+│   └── useEndorsement.ts   # Batched endorsement fetching with microtask coalescing
+│
+├── lib/                    # Shared library configuration
+│   └── queryClient.ts      # TanStack Query client (staleTime, retry settings)
+│
 ├── components/             # Reusable UI components
 │   ├── Layout.tsx           # Main layout (sidebar + header + content)
 │   ├── DatabaseTree.tsx     # Sidebar database/schema/table tree
@@ -280,12 +288,13 @@ src/
 │   └── ...                  # 15+ additional components
 │
 ├── pages/                  # Route-level page components
-│   ├── DashboardPage.tsx    # Home with stats, AI search, favorites
-│   ├── TableDetailPage.tsx  # Table/view detail with tabs
-│   ├── SchemaDetailPage.tsx # Schema detail with object list
-│   ├── SearchPage.tsx       # Full search results page
-│   ├── AdminPage.tsx        # User management and audit log
-│   └── ...                  # 12+ additional pages
+│   ├── DashboardPage.tsx       # Home with stats, AI search, favorites
+│   ├── DatabaseDetailPage.tsx  # Database detail — tabs: Schemas | Comments | Version History
+│   ├── SchemaDetailPage.tsx    # Schema detail — tabs: Tables | Comments
+│   ├── TableDetailPage.tsx     # Table/view detail — tabs: Columns | Lineage | Comments | History
+│   ├── SearchPage.tsx          # Full search results page
+│   ├── AdminPage.tsx           # User management and audit log
+│   └── ...                     # 12+ additional pages
 │
 ├── utils/                  # Utility functions
 ├── App.tsx                 # Route definitions
@@ -299,11 +308,18 @@ All routes except `/login` and `/auth/callback` are wrapped in an authenticated 
 
 ### State Management
 
-The application uses React's built-in state management:
+The application uses a combination of TanStack Query (React Query) for server state and React's built-in state for UI state:
 
+- **TanStack Query** — server state caching, deduplication, and background refetching with a 2-minute stale time. Used on all detail pages and list pages for automatic cache-based instant back-navigation.
 - **AuthContext** — global auth state (user, role, token) via React Context
-- **Component-level state** — `useState` for page data, loading states, form inputs
-- **No external state library** — each page fetches its own data on mount
+- **Component-level state** — `useState` for local UI state (form inputs, modals, toggles)
+
+### Performance Optimizations
+
+- **Batch endorsement API** — endorsement badges collect requests within a single microtask tick and fire one `POST /endorsements/batch` instead of N individual GETs. A schema with 50 tables makes 1 request instead of 50.
+- **Context endpoints** — `GET /tables/{id}/context` and `GET /columns/{id}/context` return the entity with its full breadcrumb hierarchy (schema + database) in a single query, eliminating 3–4 sequential waterfall fetches.
+- **Code splitting** — all 16 page components are loaded on demand via `React.lazy` + `Suspense`, reducing the initial bundle size.
+- **Stable column ordering** — `list_columns` applies `ORDER BY name` so column positions remain consistent after inline edits.
 
 ### API Client
 
@@ -312,6 +328,11 @@ All API calls go through a centralized Axios instance (`api/client.ts`) that:
 - Attaches the JWT bearer token from localStorage to every request
 - Handles 401 responses by redirecting to the login page
 - Uses the backend base URL from environment configuration
+
+Key API conventions:
+- **Comment endpoints** use path params: `GET /api/v1/comments/{entity_type}/{entity_id}` and `POST /api/v1/comments/{entity_type}/{entity_id}`
+- **Glossary term links** are returned inline in the `GET /api/v1/glossary/{id}` response (no separate endpoint needed)
+- **Audit log** is accessible at `GET /api/v1/admin/audit`
 
 ## Deployment Architecture
 
@@ -344,7 +365,6 @@ All six services run as Docker containers orchestrated by Docker Compose:
 - **CORS** restricted to configured frontend origins
 - **Rate limiting** on authentication endpoints (10 req/min)
 - **HTML sanitization** (nh3) on all user-generated content (comments, articles)
-- **Read-only query execution** with statement timeouts and transaction isolation
 - **API key authentication** for machine-to-machine ingestion
 - **HMAC-signed webhooks** for secure event delivery
 - **Bcrypt password hashing** for local authentication
