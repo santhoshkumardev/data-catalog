@@ -40,6 +40,7 @@ class ColumnOut(ColumnBase):
 
 class TableBase(BaseModel):
     name: str
+    title: str | None = None
     description: str | None = None
     tags: list[str] | None = None
     sme_name: str | None = None
@@ -54,6 +55,7 @@ class TableCreate(TableBase):
 
 
 class TablePatch(BaseModel):
+    title: str | None = None
     description: str | None = None
     tags: list[str] | None = None
     sme_name: str | None = None
@@ -74,6 +76,7 @@ class TableOut(TableBase):
 
 class SchemaBase(BaseModel):
     name: str
+    title: str | None = None
     description: str | None = None
     tags: list[str] | None = None
 
@@ -83,6 +86,7 @@ class SchemaCreate(SchemaBase):
 
 
 class SchemaPatch(BaseModel):
+    title: str | None = None
     description: str | None = None
     tags: list[str] | None = None
 
