@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  Database, FileCode, BookOpen, BookText, Search, Plus, X,
+  Database, FileCode, BookText, Search, Plus, X,
   LogOut, User, Settings, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
-import { getDatabases, createQuery, createArticle, type DbConnection, type QueryCreate } from "../api/catalog";
+import { getDatabases, createQuery, type DbConnection, type QueryCreate } from "../api/catalog";
 import DatabaseTree from "./DatabaseTree";
 import QueryTree from "./QueryTree";
-import ArticleTree from "./ArticleTree";
 import GlossaryTree from "./GlossaryTree";
 import SidebarSearch from "./SidebarSearch";
 
@@ -60,55 +59,26 @@ function NewQueryModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   );
 }
 
-function NewArticleModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    setSaving(true);
-    await createArticle({ title, body });
-    setSaving(false);
-    onCreated();
-    onClose();
-  };
-
-  return (
-    <ModalShell title="New Article" onClose={onClose}>
-      <div className="space-y-3">
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Article title" className="w-full border rounded px-3 py-2 text-sm" />
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Body (HTML)" rows={8} className="w-full border rounded px-3 py-2 text-sm" />
-        <button onClick={save} disabled={!title.trim() || saving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
-          Create
-        </button>
-      </div>
-    </ModalShell>
-  );
-}
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, isSteward, logout } = useAuth();
   const navigate = useNavigate();
   const [filter, setFilter] = useState("");
   const [queryRefresh, setQueryRefresh] = useState(0);
-  const [articleRefresh, setArticleRefresh] = useState(0);
   const [showNewQuery, setShowNewQuery] = useState(false);
-  const [showNewArticle, setShowNewArticle] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
-  // Sidebar section collapse
-  const [dbOpen, setDbOpen] = useState(true);
-  const [queryOpen, setQueryOpen] = useState(true);
-  const [articleOpen, setArticleOpen] = useState(true);
-  const [glossaryOpen, setGlossaryOpen] = useState(true);
+  // Sidebar section collapse — all collapsed by default
+  const [dbOpen, setDbOpen] = useState(false);
+  const [queryOpen, setQueryOpen] = useState(false);
+  const [glossaryOpen, setGlossaryOpen] = useState(false);
 
   return (
     <div className="flex h-screen">
       {/* Sidebar */}
       <aside className="w-64 bg-gray-900 text-gray-300 flex flex-col shrink-0 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-700">
-          <Link to="/" className="text-lg font-bold text-white">Data Catalog</Link>
-          <span className="text-xs text-gray-500 ml-1">v2</span>
+          <Link to="/" onClick={() => { setDbOpen(false); setQueryOpen(false); setGlossaryOpen(false); setFilter(""); }} className="text-lg font-bold text-white">Data Catalog</Link>
         </div>
         <div className="px-3 py-2">
           <div className="flex items-center gap-1 bg-gray-800 rounded px-2 py-1.5">
@@ -147,18 +117,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 {queryOpen && <QueryTree filter="" refreshKey={queryRefresh} />}
               </div>
 
-              {/* Articles */}
-              <div>
-                <div className="flex items-center justify-between px-2 py-1.5">
-                  <button onClick={() => setArticleOpen(!articleOpen)} className="flex items-center gap-1 text-xs uppercase tracking-wider text-gray-500 hover:text-gray-300">
-                    {articleOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                    <BookOpen size={12} /> Articles
-                  </button>
-                  {isSteward && <button onClick={() => setShowNewArticle(true)} className="text-gray-500 hover:text-green-400"><Plus size={14} /></button>}
-                </div>
-                {articleOpen && <ArticleTree filter="" refreshKey={articleRefresh} />}
-              </div>
-
               {/* Glossary */}
               <div>
                 <button onClick={() => setGlossaryOpen(!glossaryOpen)} className="flex items-center gap-1 w-full px-2 py-1.5 text-xs uppercase tracking-wider text-gray-500 hover:text-gray-300">
@@ -179,7 +137,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-4">
             <Link to="/databases" className="text-sm text-gray-600 hover:text-blue-600">Databases</Link>
             <Link to="/queries" className="text-sm text-gray-600 hover:text-blue-600">Queries</Link>
-            <Link to="/articles" className="text-sm text-gray-600 hover:text-blue-600">Articles</Link>
             <Link to="/glossary" className="text-sm text-gray-600 hover:text-blue-600">Glossary</Link>
             <Link to="/search" className="text-sm text-gray-600 hover:text-blue-600">Search</Link>
           </div>
@@ -217,7 +174,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </div>
 
       {showNewQuery && <NewQueryModal onClose={() => setShowNewQuery(false)} onCreated={() => setQueryRefresh((k) => k + 1)} />}
-      {showNewArticle && <NewArticleModal onClose={() => setShowNewArticle(false)} onCreated={() => setArticleRefresh((k) => k + 1)} />}
     </div>
   );
 }

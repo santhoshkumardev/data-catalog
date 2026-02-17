@@ -13,7 +13,7 @@ from app.models.catalog import Article, ArticleAttachment
 from app.models.user import User
 from app.schemas.catalog import ArticleCreate, ArticleOut, ArticlePatch, AttachmentOut, PaginatedArticles
 from app.services.audit import log_action
-from app.services.search_sync import sync_article, remove_document
+from app.services.search_sync import sync_article_async, remove_document
 from app.storage import ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE, delete_file, download_url, upload_file
 
 router = APIRouter(prefix="/api/v1/articles", tags=["articles"])
@@ -76,7 +76,7 @@ async def create_article(
     await log_action(db, "article", str(a.id), "create", current_user.id, new_data={"title": a.title})
     await db.commit()
     await db.refresh(a, ["creator", "attachments"])
-    sync_article(a)
+    await sync_article_async(a)
     return _to_out(a)
 
 
@@ -106,7 +106,7 @@ async def patch_article(
     await log_action(db, "article", str(article_id), "update", current_user.id, old_data, changes)
     await db.commit()
     await db.refresh(a, ["creator", "attachments"])
-    sync_article(a)
+    await sync_article_async(a)
     return _to_out(a)
 
 

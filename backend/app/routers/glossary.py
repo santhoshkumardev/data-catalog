@@ -15,7 +15,7 @@ from app.schemas.glossary import (
     PaginatedGlossaryTerms, TermLinkCreate, TermLinkOut,
 )
 from app.services.audit import log_action
-from app.services.search_sync import sync_glossary_term, remove_document
+from app.services.search_sync import sync_glossary_term_async, remove_document
 
 router = APIRouter(prefix="/api/v1/glossary", tags=["glossary"])
 
@@ -66,7 +66,7 @@ async def create_term(
     await log_action(db, "glossary_term", str(term.id), "create", current_user.id, new_data={"name": term.name})
     await db.commit()
     await db.refresh(term, ["owner", "creator", "links"])
-    sync_glossary_term(term)
+    await sync_glossary_term_async(term)
     return _to_out(term)
 
 
@@ -96,7 +96,7 @@ async def patch_term(
     await log_action(db, "glossary_term", str(term_id), "update", current_user.id, old_data, changes)
     await db.commit()
     await db.refresh(term, ["owner", "creator", "links"])
-    sync_glossary_term(term)
+    await sync_glossary_term_async(term)
     return _to_out(term)
 
 

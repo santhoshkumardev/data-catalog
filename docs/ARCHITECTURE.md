@@ -12,7 +12,7 @@
                            ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                       Backend API (Port 8001)                        │
-│                    FastAPI + Uvicorn (ASGI)                           │
+│         FastAPI + Uvicorn ASGI  ·  4 worker processes                │
 │                                                                      │
 │  ┌────────────┐  ┌────────────┐  ┌──────────────┐  ┌─────────────┐  │
 │  │ Middleware  │  │  16 API    │  │   Services   │  │    Auth     │  │
@@ -21,21 +21,24 @@
 │  └────────────┘  └────────────┘  └──────────────┘  └─────────────┘  │
 │                                                                      │
 │  ┌────────────────────────────────────────────────────────────────┐  │
-│  │                  SQLAlchemy 2.0 ORM (async)                    │  │
+│  │    SQLAlchemy 2.0 ORM (async) · pool 5×4 workers · pre_ping   │  │
 │  └────────────────────────────────────────────────────────────────┘  │
 └──────┬──────────────┬───────────────┬──────────────┬────────────────┘
        │              │               │              │
        ▼              ▼               ▼              ▼
-┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐
-│ PostgreSQL │ │   Redis    │ │Meilisearch │ │   MinIO    │
-│   16       │ │     7      │ │   v1.6     │ │  (S3)      │
-│            │ │            │ │            │ │            │
-│ Port 5433  │ │ Port 6379  │ │ Port 7700  │ │ Port 9000  │
-│            │ │            │ │            │ │  UI: 9001  │
-│ Primary    │ │ Token      │ │ Full-text  │ │ File       │
-│ data store │ │ blacklist, │ │ search     │ │ storage    │
-│            │ │ cache      │ │ (7 indexes)│ │ (articles) │
-└────────────┘ └────────────┘ └────────────┘ └────────────┘
+┌────────────┐ ┌──────────────┐ ┌────────────┐ ┌────────────┐
+│ PostgreSQL │ │    Redis     │ │Meilisearch │ │   MinIO    │
+│   16       │ │      7       │ │   v1.6     │ │  (S3)      │
+│            │ │              │ │            │ │            │
+│ Port 5433  │ │  Port 6379   │ │ Port 7700  │ │ Port 9000  │
+│            │ │              │ │            │ │  UI: 9001  │
+│ Primary    │ │ · Token      │ │ Full-text  │ │ File       │
+│ data store │ │   blacklist  │ │ search     │ │ storage    │
+│            │ │ · User cache │ │ (7 indexes)│ │ (articles) │
+│            │ │   (5 min TTL)│ │            │ │            │
+│            │ │ · List cache │ │            │ │            │
+│            │ │   (2 min TTL)│ │            │ │            │
+└────────────┘ └──────────────┘ └────────────┘ └────────────┘
 ```
 
 ## Technology Stack
@@ -136,7 +139,7 @@ Incoming HTTP Request
 
 | Service | Responsibility |
 |---------|---------------|
-| **search_sync** | Synchronizes entity changes to Meilisearch indexes. Called after every create/update in the catalog. Requires explicit keyword args (`db_name`, `schema_name`, etc.) and eager-loaded relationships via SQLAlchemy `selectinload` before the session is committed. Supports individual sync and full reindex. |
+| **search_sync** | Synchronizes entity changes to Meilisearch indexes. Called after every create/update in the catalog. All sync functions have async counterparts (`sync_*_async`) that wrap the call in `run_in_threadpool`, keeping the event loop unblocked. Requires explicit keyword args (`db_name`, `schema_name`, etc.) and eager-loaded relationships via SQLAlchemy `selectinload` before the session is committed. Supports individual sync and full reindex. |
 | **audit** | Records all data mutations to the audit log with old/new data snapshots and actor information. |
 | **notifications** | Creates in-app notifications for relevant events (comments, approvals, etc.). |
 | **webhooks** | Dispatches webhook events to subscribed endpoints with HMAC-signed payloads. Tracks delivery status. |
@@ -196,24 +199,26 @@ Managed by Alembic with a linear revision chain:
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
 │   Browser   │────>│  OAuth       │────>│  Provider   │
-│             │     │  /auth/login │     │  (Google /   │
+│             │     │  /auth/login │     │  (Google /  │
 │             │<────│  /callback   │<────│   Azure /   │
 │             │     │              │     │   OIDC)     │
 └──────┬──────┘     └──────┬───────┘     └─────────────┘
        │                   │
-       │              JWT created
-       │              (sub, role, jti)
-       │                   │
+       │              JWT created          cache invalidated
+       │              (sub, role, jti)  ◄─ on login/logout/
+       │                   │               role change
        │   Authorization:  │
        │   Bearer <token>  │
        ▼                   ▼
-┌──────────────────────────────────┐
-│  Every subsequent API request    │
-│  → decode JWT                    │
-│  → check Redis blacklist (jti)   │
-│  → load User from PostgreSQL     │
-│  → enforce role requirements     │
-└──────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  Every subsequent API request                        │
+│  → decode JWT                                        │
+│  → check Redis blacklist (jti)                       │
+│  → lookup user:{id} in Redis  ──hit──> return cached │
+│       │ miss                                         │
+│       └─> query PostgreSQL → cache 5 min → return    │
+│  → enforce role requirements                         │
+└──────────────────────────────────────────────────────┘
 ```
 
 **OIDC Group Mapping:** When using a generic OIDC provider, group claims are automatically mapped to application roles:
@@ -225,26 +230,28 @@ Managed by Alembic with a linear revision chain:
 ### Search Architecture
 
 ```
-┌────────────────┐     sync on      ┌─────────────────┐
-│   PostgreSQL   │ ──────────────>  │   Meilisearch   │
-│                │  create/update   │                 │
-│  Source of     │                  │  7 Indexes:     │
-│  truth         │                  │  - databases    │
-│                │                  │  - schemas      │
-│                │  full reindex    │  - tables       │
-│                │ ──────────────>  │  - columns      │
-│                │  (admin trigger) │  - queries      │
-│                │                  │  - articles     │
-│                │                  │  - glossary     │
-└────────────────┘                  └────────┬────────┘
-                                             │
-                                     search queries
-                                             │
-                                    ┌────────▼────────┐
-                                    │   Frontend      │
-                                    │   Search UI     │
-                                    └─────────────────┘
+┌────────────────┐  non-blocking sync   ┌─────────────────┐
+│   PostgreSQL   │ ──────────────────>  │   Meilisearch   │
+│                │  (run_in_threadpool) │                 │
+│  Source of     │  on create/update    │  7 Indexes:     │
+│  truth         │                      │  - databases    │
+│                │                      │  - schemas      │
+│                │    full reindex      │  - tables       │
+│                │ ──────────────────>  │  - columns      │
+│                │    (admin trigger)   │  - queries      │
+│                │                      │  - articles     │
+│                │                      │  - glossary     │
+└────────────────┘                      └────────┬────────┘
+                                                 │
+                                         search queries
+                                                 │
+                                        ┌────────▼────────┐
+                                        │   Frontend      │
+                                        │   Search UI     │
+                                        └─────────────────┘
 ```
+
+Meilisearch sync calls (`index_document`, `index_documents`) are synchronous HTTP calls to the Meilisearch API. They are wrapped with `starlette.concurrency.run_in_threadpool` so they execute in a thread pool without blocking the async event loop during PATCH requests.
 
 Each index has configured:
 - **Searchable attributes:** fields that are full-text searched (name, description, tags, etc.)
@@ -310,11 +317,23 @@ All routes except `/login` and `/auth/callback` are wrapped in an authenticated 
 
 The application uses a combination of TanStack Query (React Query) for server state and React's built-in state for UI state:
 
-- **TanStack Query** — server state caching, deduplication, and background refetching with a 2-minute stale time. Used on all detail pages and list pages for automatic cache-based instant back-navigation.
+- **TanStack Query** — server state caching, deduplication, and background refetching with a **5-minute stale time**. Used on all detail pages and list pages for automatic cache-based instant back-navigation. The longer stale time reduces unnecessary refetches for stable catalog metadata when many users are active simultaneously.
 - **AuthContext** — global auth state (user, role, token) via React Context
 - **Component-level state** — `useState` for local UI state (form inputs, modals, toggles)
 
 ### Performance Optimizations
+
+#### Backend
+
+| Optimization | Detail |
+|---|---|
+| **4 Uvicorn workers** | `--workers 4` parallelizes requests across CPU cores, eliminating single-process serialization under concurrent SSO load |
+| **Connection pool tuning** | `pool_size=5`, `max_overflow=5` per worker (20 total connections); `pool_pre_ping=True` detects stale connections after fork |
+| **Redis user cache** | `get_current_user` checks `user:{id}` in Redis before querying PostgreSQL. 5-minute TTL; invalidated on logout and role change via `cache_user_delete` |
+| **Redis list caches** | `GET /databases`, `GET /databases/{id}/schemas`, `GET /schemas/{id}/tables` cache responses for 120 seconds. Keys are namespaced by all query parameters. Invalidated via `cache_delete_pattern` on any PATCH to the respective resource |
+| **Non-blocking search sync** | All `sync_*` functions have async wrappers (`sync_*_async`) that call `starlette.concurrency.run_in_threadpool`, offloading the synchronous Meilisearch HTTP call to a thread pool without blocking the event loop |
+
+#### Frontend
 
 - **Batch endorsement API** — endorsement badges collect requests within a single microtask tick and fire one `POST /endorsements/batch` instead of N individual GETs. A schema with 50 tables makes 1 request instead of 50.
 - **Context endpoints** — `GET /tables/{id}/context` and `GET /columns/{id}/context` return the entity with its full breadcrumb hierarchy (schema + database) in a single query, eliminating 3–4 sequential waterfall fetches.

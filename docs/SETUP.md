@@ -334,6 +334,49 @@ The tests cover:
 
 > **Note:** Tests connect to the running stack at `http://localhost:8001` using the demo steward credentials (`steward@demo.com` / `steward123`) and the ingest API key (`dev-ingest-key`). A test database is created and cleaned up automatically.
 
+### Stress Testing
+
+A [Locust](https://locust.io) stress test suite is included under `stress_test/`. It simulates **50 concurrent users** (40 read-only viewers + 10 stewards who also write) against the live stack and produces an HTML report with request latencies, throughput, and failure rates.
+
+**Install Locust (one-time):**
+
+```bash
+pip install locust
+```
+
+**Run headless (3-minute run, produces `report.html`):**
+
+```bash
+cd stress_test
+./run.sh
+```
+
+**Run with live web dashboard:**
+
+```bash
+cd stress_test
+./run.sh --ui
+# Open http://localhost:8089, set host to http://localhost:8001
+```
+
+**Workload breakdown:**
+
+| User type | Count | Behaviour |
+|-----------|-------|-----------|
+| **ViewerUser** | 40 | Browse databases → schemas → tables → columns, search, analytics |
+| **StewardUser** | 10 | Same reads + PATCH descriptions/tags on tables, columns, schemas |
+
+After a 3-minute run against a freshly seeded stack, typical results are:
+
+| Metric | Value |
+|--------|-------|
+| Sustained throughput | ~32 req/s |
+| Median read latency | 7–12 ms |
+| Median write latency | 20–26 ms |
+| Error rate (real failures) | < 1% |
+
+Output files: `stress_test/report.html` (visual), `stress_test/results_stats.csv`, `stress_test/results_failures.csv`.
+
 ### Stopping All Services
 
 ```bash

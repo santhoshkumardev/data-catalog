@@ -14,6 +14,7 @@ from app.models.group import Group, UserGroup
 from app.models.user import User
 from app.schemas.audit import AuditLogOut, PaginatedAuditLogs
 from app.schemas.group import GroupCreate, GroupOut, GroupPatch, UserGroupOut, AddMember
+from app.redis_client import cache_user_delete
 from app.services.audit import log_action
 from app.services.search_sync import reindex_all
 
@@ -56,6 +57,7 @@ async def update_user_role(
     await log_action(db, "user", str(user_id), "update", current_user.id, {"role": old_role}, {"role": patch.role})
     await db.commit()
     await db.refresh(user)
+    await cache_user_delete(str(user_id))
     return user
 
 

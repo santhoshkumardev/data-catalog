@@ -1,7 +1,9 @@
 import logging
+from functools import partial
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.models.catalog import Article, Column, DbConnection, Query, Schema, Table
 from app.models.glossary import GlossaryTerm
@@ -100,6 +102,34 @@ def sync_glossary_term(term) -> None:
         "status": term.status,
         "breadcrumb": [term.name],
     })
+
+
+async def sync_database_async(db_conn) -> None:
+    await run_in_threadpool(sync_database, db_conn)
+
+
+async def sync_schema_async(schema, *, db_name: str) -> None:
+    await run_in_threadpool(partial(sync_schema, schema, db_name=db_name))
+
+
+async def sync_table_async(table, *, db_name: str, schema_name: str, connection_id: str = "") -> None:
+    await run_in_threadpool(partial(sync_table, table, db_name=db_name, schema_name=schema_name, connection_id=connection_id))
+
+
+async def sync_column_async(col, *, db_name: str, schema_name: str, table_name: str, connection_id: str = "", schema_id: str = "") -> None:
+    await run_in_threadpool(partial(sync_column, col, db_name=db_name, schema_name=schema_name, table_name=table_name, connection_id=connection_id, schema_id=schema_id))
+
+
+async def sync_query_async(q) -> None:
+    await run_in_threadpool(sync_query, q)
+
+
+async def sync_article_async(a) -> None:
+    await run_in_threadpool(sync_article, a)
+
+
+async def sync_glossary_term_async(term) -> None:
+    await run_in_threadpool(sync_glossary_term, term)
 
 
 def remove_document(index_name: str, doc_id: str) -> None:

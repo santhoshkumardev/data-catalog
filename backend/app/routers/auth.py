@@ -17,7 +17,7 @@ from app.database import get_db
 from app.middleware.rate_limit import limiter
 from app.models.group import Group, UserGroup
 from app.models.user import User
-from app.redis_client import blacklist_token
+from app.redis_client import blacklist_token, cache_user_delete
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -180,6 +180,7 @@ async def callback(provider: str, request: Request, db: AsyncSession = Depends(g
 
     user.last_login = datetime.now(timezone.utc)
     await db.commit()
+    await cache_user_delete(str(user.id))
 
     access_token = create_access_token({"sub": str(user.id), "role": user.role})
     redirect_url = f"{settings.frontend_url}/auth/callback?token={access_token}"
@@ -211,6 +212,7 @@ async def logout(current_user: User = Depends(get_current_user), request: Reques
                 await blacklist_token(jti, ttl)
         except Exception:
             pass
+    await cache_user_delete(str(current_user.id))
     return {"message": "Logged out"}
 
 

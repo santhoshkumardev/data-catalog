@@ -13,7 +13,7 @@ from app.models.catalog import DbConnection, Query as QueryModel
 from app.models.user import User
 from app.schemas.catalog import PaginatedQueries, QueryCreate, QueryOut, QueryPatch
 from app.services.audit import log_action
-from app.services.search_sync import sync_query, remove_document
+from app.services.search_sync import sync_query_async, remove_document
 
 router = APIRouter(prefix="/api/v1/queries", tags=["queries"])
 
@@ -75,7 +75,7 @@ async def create_query(
     await log_action(db, "query", str(q.id), "create", current_user.id, new_data={"name": q.name})
     await db.commit()
     await db.refresh(q, ["connection", "creator"])
-    sync_query(q)
+    await sync_query_async(q)
     return _to_out(q)
 
 
@@ -109,7 +109,7 @@ async def patch_query(
     await log_action(db, "query", str(query_id), "update", current_user.id, old_data, changes)
     await db.commit()
     await db.refresh(q, ["connection", "creator"])
-    sync_query(q)
+    await sync_query_async(q)
     return _to_out(q)
 
 

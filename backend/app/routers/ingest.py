@@ -11,7 +11,7 @@ from app.auth.dependencies import require_ingest_api_key
 from app.database import get_db
 from app.models.catalog import Column, DbConnection, Schema, Table, TableLineage
 from app.schemas.catalog import IngestBatchPayload, IngestBatchResult, LineageEdgeCreate
-from app.services.search_sync import sync_column, sync_database, sync_schema, sync_table
+from app.services.search_sync import sync_column_async, sync_database_async, sync_schema_async, sync_table_async
 
 router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"], dependencies=[Depends(require_ingest_api_key)])
 
@@ -154,22 +154,22 @@ async def ingest_batch(payload: IngestBatchPayload, db: AsyncSession = Depends(g
 
     # Sync all ingested entities to Meilisearch
     try:
-        sync_database(db_conn)
+        await sync_database_async(db_conn)
         for schema_payload in payload.schemas:
             result = await db.execute(select(Schema).where(Schema.connection_id == db_conn.id, Schema.name == schema_payload.name))
             schema = result.scalar_one_or_none()
             if schema is None:
                 continue
-            sync_schema(schema, db_name=db_conn.name)
+            await sync_schema_async(schema, db_name=db_conn.name)
             for table_payload in schema_payload.tables:
                 result = await db.execute(select(Table).where(Table.schema_id == schema.id, Table.name == table_payload.name))
                 table = result.scalar_one_or_none()
                 if table is None:
                     continue
-                sync_table(table, db_name=db_conn.name, schema_name=schema.name, connection_id=str(db_conn.id))
+                await sync_table_async(table, db_name=db_conn.name, schema_name=schema.name, connection_id=str(db_conn.id))
                 cols = (await db.execute(select(Column).where(Column.table_id == table.id))).scalars().all()
                 for col in cols:
-                    sync_column(col, db_name=db_conn.name, schema_name=schema.name, table_name=table.name, connection_id=str(db_conn.id), schema_id=str(schema.id))
+                    await sync_column_async(col, db_name=db_conn.name, schema_name=schema.name, table_name=table.name, connection_id=str(db_conn.id), schema_id=str(schema.id))
     except Exception:
         pass
 

@@ -44,6 +44,18 @@ async def cache_delete_pattern(pattern: str) -> None:
             break
 
 
+async def cache_user_get(user_id: str) -> dict | None:
+    return await cache_get(f"user:{user_id}")
+
+
+async def cache_user_set(user_id: str, data: dict, ttl: int = 300) -> None:
+    await cache_set(f"user:{user_id}", data, ttl)
+
+
+async def cache_user_delete(user_id: str) -> None:
+    await cache_delete(f"user:{user_id}")
+
+
 async def blacklist_token(jti: str, ttl: int) -> None:
     r = await get_redis()
     await r.set(f"bl:{jti}", "1", ex=ttl)
