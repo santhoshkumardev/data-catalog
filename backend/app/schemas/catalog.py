@@ -153,6 +153,8 @@ class IngestColumn(BaseModel):
     data_type: str
     is_nullable: bool = True
     is_primary_key: bool = False
+    title: str | None = None
+    description: str | None = None
 
 
 class IngestTable(BaseModel):

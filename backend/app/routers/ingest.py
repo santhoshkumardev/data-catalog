@@ -126,12 +126,17 @@ async def ingest_batch(payload: IngestBatchPayload, db: AsyncSession = Depends(g
                     col.data_type = col_payload.data_type
                     col.is_nullable = col_payload.is_nullable
                     col.is_primary_key = col_payload.is_primary_key
+                    if col_payload.title is not None:
+                        col.title = col_payload.title
+                    if col_payload.description is not None:
+                        col.description = col_payload.description
                     col.deleted_at = None
                 else:
                     col = Column(
                         id=uuid.uuid4(), table_id=table.id, name=col_payload.name,
                         data_type=col_payload.data_type, is_nullable=col_payload.is_nullable,
                         is_primary_key=col_payload.is_primary_key,
+                        title=col_payload.title, description=col_payload.description,
                     )
                     db.add(col)
                 columns_upserted += 1
