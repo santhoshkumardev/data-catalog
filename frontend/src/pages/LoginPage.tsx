@@ -14,11 +14,24 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [providers, setProviders] = useState<AuthProvider[]>([]);
+  const [authMode, setAuthMode] = useState<string>("basic");
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, user } = useAuth();
 
   useEffect(() => {
-    api.get<{ providers: AuthProvider[] }>("/auth/providers").then((res) => setProviders(res.data.providers)).catch(() => {});
+    if (user) {
+      navigate("/", { replace: true });
+    }
+  }, [user, navigate]);
+
+  useEffect(() => {
+    api
+      .get<{ auth_mode: string; providers: AuthProvider[] }>("/auth/providers")
+      .then((res) => {
+        setAuthMode(res.data.auth_mode || "basic");
+        setProviders(res.data.providers);
+      })
+      .catch(() => {});
   }, []);
 
   const submit = async (e: React.FormEvent) => {
@@ -61,57 +74,67 @@ export default function LoginPage() {
 
           {error && <div className="bg-red-50 text-red-600 text-sm rounded p-3 mb-4">{error}</div>}
 
-          <form onSubmit={submit} className="space-y-4">
-            <input
-              type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email" required
-              className="w-full border rounded px-3 py-2 text-sm"
-            />
-            <input
-              type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password" required
-              className="w-full border rounded px-3 py-2 text-sm"
-            />
-            <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-50">
-              {loading ? "Signing in..." : "Sign In"}
-            </button>
-          </form>
-
-          {providers.length > 0 && (
-            <div className="mt-4 space-y-2">
-              <div className="relative flex items-center justify-center">
-                <div className="absolute inset-0 flex items-center"><div className="w-full border-t" /></div>
-                <span className="relative bg-white px-2 text-xs text-gray-400">or</span>
-              </div>
-              {providers.map((p) => (
-                <a
-                  key={p.name}
-                  href={`${api.defaults.baseURL}/auth/login/${p.name}`}
-                  className="w-full flex items-center justify-center gap-2 border rounded px-3 py-2 text-sm hover:bg-gray-50"
-                >
-                  Sign in with {p.label}
-                </a>
-              ))}
+          {authMode === "sso" ? (
+            <div className="text-center py-8">
+              <div className="animate-spin inline-block w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mb-4" />
+              <p className="text-gray-600 text-sm">Authenticating via SSO...</p>
+              <p className="text-gray-400 text-xs mt-2">If you are not redirected, contact your administrator.</p>
             </div>
-          )}
-
-          <div className="mt-6 border-t pt-4">
-            <p className="text-xs text-gray-400 text-center mb-3">Demo Accounts</p>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { email: "steward@demo.com", password: "steward123", role: "Steward" },
-                { email: "viewer@demo.com", password: "viewer123", role: "Viewer" },
-              ].map((d) => (
-                <button
-                  key={d.email}
-                  onClick={() => demoLogin(d.email, d.password)}
-                  className="text-xs border rounded px-2 py-1.5 hover:bg-gray-50 text-gray-600"
-                >
-                  {d.role}
+          ) : (
+            <>
+              <form onSubmit={submit} className="space-y-4">
+                <input
+                  type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email" required
+                  className="w-full border rounded px-3 py-2 text-sm"
+                />
+                <input
+                  type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password" required
+                  className="w-full border rounded px-3 py-2 text-sm"
+                />
+                <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-50">
+                  {loading ? "Signing in..." : "Sign In"}
                 </button>
-              ))}
-            </div>
-          </div>
+              </form>
+
+              {providers.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  <div className="relative flex items-center justify-center">
+                    <div className="absolute inset-0 flex items-center"><div className="w-full border-t" /></div>
+                    <span className="relative bg-white px-2 text-xs text-gray-400">or</span>
+                  </div>
+                  {providers.map((p) => (
+                    <a
+                      key={p.name}
+                      href={`${api.defaults.baseURL}/auth/login/${p.name}`}
+                      className="w-full flex items-center justify-center gap-2 border rounded px-3 py-2 text-sm hover:bg-gray-50"
+                    >
+                      Sign in with {p.label}
+                    </a>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-6 border-t pt-4">
+                <p className="text-xs text-gray-400 text-center mb-3">Demo Accounts</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { email: "steward@demo.com", password: "steward123", role: "Steward" },
+                    { email: "viewer@demo.com", password: "viewer123", role: "Viewer" },
+                  ].map((d) => (
+                    <button
+                      key={d.email}
+                      onClick={() => demoLogin(d.email, d.password)}
+                      className="text-xs border rounded px-2 py-1.5 hover:bg-gray-50 text-gray-600"
+                    >
+                      {d.role}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

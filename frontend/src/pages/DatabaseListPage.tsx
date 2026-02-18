@@ -1,22 +1,43 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Database } from "lucide-react";
 import { getDatabases } from "../api/catalog";
+import Pagination from "../components/Pagination";
 
 export default function DatabaseListPage() {
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const { data } = useQuery({
-    queryKey: ["databases", page],
-    queryFn: () => getDatabases(page),
+    queryKey: ["databases", page, debouncedSearch],
+    queryFn: () => getDatabases(page, 20, debouncedSearch || undefined),
   });
 
   if (!data) return <div className="text-gray-400">Loading...</div>;
 
+  const totalPages = Math.ceil(data.total / data.size);
+
   return (
     <div>
-      <h1 className="text-xl font-bold mb-4">Databases</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-xl font-bold">Databases</h1>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search databases..."
+          className="border rounded px-3 py-1.5 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
       <div className="grid gap-3">
         {data.items.map((db) => (
           <Link key={db.id} to={`/databases/${db.id}`} className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow">
@@ -33,13 +54,7 @@ export default function DatabaseListPage() {
           </Link>
         ))}
       </div>
-      {data.total > data.size && (
-        <div className="flex items-center justify-center gap-3 mt-4">
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 border rounded text-sm disabled:opacity-50">Prev</button>
-          <span className="text-sm text-gray-500">Page {page} of {Math.ceil(data.total / data.size)}</span>
-          <button onClick={() => setPage((p) => p + 1)} disabled={page >= Math.ceil(data.total / data.size)} className="px-3 py-1 border rounded text-sm disabled:opacity-50">Next</button>
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
   );
 }

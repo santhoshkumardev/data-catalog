@@ -40,6 +40,7 @@ class ColumnOut(ColumnBase):
 
 class TableBase(BaseModel):
     name: str
+    title: str | None = None
     description: str | None = None
     tags: list[str] | None = None
     sme_name: str | None = None
@@ -54,6 +55,7 @@ class TableCreate(TableBase):
 
 
 class TablePatch(BaseModel):
+    title: str | None = None
     description: str | None = None
     tags: list[str] | None = None
     sme_name: str | None = None
@@ -74,6 +76,7 @@ class TableOut(TableBase):
 
 class SchemaBase(BaseModel):
     name: str
+    title: str | None = None
     description: str | None = None
     tags: list[str] | None = None
 
@@ -83,6 +86,7 @@ class SchemaCreate(SchemaBase):
 
 
 class SchemaPatch(BaseModel):
+    title: str | None = None
     description: str | None = None
     tags: list[str] | None = None
 
@@ -153,15 +157,21 @@ class IngestColumn(BaseModel):
 
 class IngestTable(BaseModel):
     name: str
+    title: str | None = None
+    description: str | None = None
     row_count: int | None = None
     object_type: str = "table"
     view_definition: str | None = None
     columns: list[IngestColumn] = []
+    steward_emails: list[str] = []
 
 
 class IngestSchema(BaseModel):
     name: str
+    title: str | None = None
+    description: str | None = None
     tables: list[IngestTable] = []
+    steward_emails: list[str] = []
 
 
 class IngestBatchPayload(BaseModel):

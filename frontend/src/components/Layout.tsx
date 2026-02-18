@@ -76,18 +76,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen">
       {/* Sidebar */}
-      <aside className="w-64 bg-gray-900 text-gray-300 flex flex-col shrink-0 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-700">
-          <Link to="/" onClick={() => { setDbOpen(false); setQueryOpen(false); setGlossaryOpen(false); setFilter(""); }} className="text-lg font-bold text-white">Data Catalog</Link>
+      <aside className="w-64 text-gray-300 flex flex-col shrink-0 overflow-hidden" style={{ background: "#0E3762" }}>
+        <div className="px-4 py-3 border-b border-white/20">
+          <Link to="/" className="font-bold text-white" style={{ fontSize: "1.25rem" }}>Data Catalog</Link>
+          <span className="text-xs text-gray-400 ml-1">v2</span>
         </div>
         <div className="px-3 py-2">
-          <div className="flex items-center gap-1 bg-gray-800 rounded px-2 py-1.5">
-            <Search size={14} className="text-gray-400" />
+          <div className="flex items-center gap-1 rounded px-2 py-1.5" style={{ background: "#175393" }}>
+            <Search size={14} className="text-gray-300" />
             <input
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Filter..."
-              className="bg-transparent text-sm flex-1 outline-none text-gray-300"
+              className="bg-transparent text-sm flex-1 outline-none text-gray-200 placeholder-gray-400"
             />
           </div>
         </div>
@@ -98,7 +99,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <>
               {/* Databases */}
               <div>
-                <button onClick={() => setDbOpen(!dbOpen)} className="flex items-center gap-1 w-full px-2 py-1.5 text-xs uppercase tracking-wider text-gray-500 hover:text-gray-300">
+                <button onClick={() => setDbOpen(!dbOpen)} className="flex items-center gap-1 w-full px-2 py-1.5 text-xs uppercase tracking-wider text-white font-bold hover:text-gray-200">
                   {dbOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                   <Database size={12} /> Databases
                 </button>
@@ -108,7 +109,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               {/* Queries */}
               <div>
                 <div className="flex items-center justify-between px-2 py-1.5">
-                  <button onClick={() => setQueryOpen(!queryOpen)} className="flex items-center gap-1 text-xs uppercase tracking-wider text-gray-500 hover:text-gray-300">
+                  <button onClick={() => setQueryOpen(!queryOpen)} className="flex items-center gap-1 text-xs uppercase tracking-wider text-white font-bold hover:text-gray-200">
                     {queryOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     <FileCode size={12} /> Queries
                   </button>
@@ -117,9 +118,21 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 {queryOpen && <QueryTree filter="" refreshKey={queryRefresh} />}
               </div>
 
+              {/* Articles */}
+              <div>
+                <div className="flex items-center justify-between px-2 py-1.5">
+                  <button onClick={() => setArticleOpen(!articleOpen)} className="flex items-center gap-1 text-xs uppercase tracking-wider text-white font-bold hover:text-gray-200">
+                    {articleOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                    <BookOpen size={12} /> Articles
+                  </button>
+                  {isSteward && <button onClick={() => setShowNewArticle(true)} className="text-gray-500 hover:text-green-400"><Plus size={14} /></button>}
+                </div>
+                {articleOpen && <ArticleTree filter="" refreshKey={articleRefresh} />}
+              </div>
+
               {/* Glossary */}
               <div>
-                <button onClick={() => setGlossaryOpen(!glossaryOpen)} className="flex items-center gap-1 w-full px-2 py-1.5 text-xs uppercase tracking-wider text-gray-500 hover:text-gray-300">
+                <button onClick={() => setGlossaryOpen(!glossaryOpen)} className="flex items-center gap-1 w-full px-2 py-1.5 text-xs uppercase tracking-wider text-white font-bold hover:text-gray-200">
                   {glossaryOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                   <BookText size={12} /> Glossary
                 </button>
@@ -135,10 +148,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {/* Top bar */}
         <header className="flex items-center justify-between px-6 py-3 border-b bg-white">
           <div className="flex items-center gap-4">
-            <Link to="/databases" className="text-sm text-gray-600 hover:text-blue-600">Databases</Link>
-            <Link to="/queries" className="text-sm text-gray-600 hover:text-blue-600">Queries</Link>
-            <Link to="/glossary" className="text-sm text-gray-600 hover:text-blue-600">Glossary</Link>
-            <Link to="/search" className="text-sm text-gray-600 hover:text-blue-600">Search</Link>
+            <Link to="/databases" className="text-sm font-medium text-black hover:text-blue-600">Databases</Link>
+            <Link to="/queries" className="text-sm font-medium text-black hover:text-blue-600">Queries</Link>
+            <Link to="/articles" className="text-sm font-medium text-black hover:text-blue-600">Articles</Link>
+            <Link to="/glossary" className="text-sm font-medium text-black hover:text-blue-600">Glossary</Link>
+            <Link to="/search" className="text-sm font-medium text-black hover:text-blue-600">Search</Link>
           </div>
           <div className="flex items-center gap-3">
             <div className="relative">

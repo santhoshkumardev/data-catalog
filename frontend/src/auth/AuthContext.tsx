@@ -41,8 +41,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const stored = localStorage.getItem("access_token");
+
+    // Try SSO auto-login if no token is stored
     if (!stored) {
-      setLoading(false);
+      api
+        .get<{ sso: boolean; access_token?: string }>("/auth/sso-check")
+        .then(async (res) => {
+          if (res.data.sso && res.data.access_token) {
+            localStorage.setItem("access_token", res.data.access_token);
+            const meRes = await api.get<AuthUser>("/auth/me");
+            setUser(meRes.data);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
       return;
     }
 

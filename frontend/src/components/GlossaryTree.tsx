@@ -21,7 +21,7 @@ export default function GlossaryTree({ filter }: { filter: string }) {
   return (
     <div className="text-sm">
       {filtered.map((t) => (
-        <Link key={t.id} to={`/glossary/${t.id}`} className="flex items-center gap-1 px-2 py-1 hover:bg-gray-800 rounded">
+        <Link key={t.id} to={`/glossary/${t.id}`} className="flex items-center gap-1 px-2 py-1 hover:text-white rounded">
           <BookText size={14} className="text-teal-400 shrink-0" />
           <span className="truncate">{t.name}</span>
           {t.status === "draft" && <span className="text-[10px] text-yellow-500 ml-auto">draft</span>}
