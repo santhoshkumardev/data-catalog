@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  Database, FileCode, BookOpen, BookText, Search, Plus, X,
+  Database, FileCode, BookText, Search, Plus, X,
   LogOut, User, Settings, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
-import { getDatabases, createQuery, createArticle, type DbConnection, type QueryCreate } from "../api/catalog";
+import { getDatabases, createQuery, type DbConnection, type QueryCreate } from "../api/catalog";
 import DatabaseTree from "./DatabaseTree";
 import QueryTree from "./QueryTree";
-import ArticleTree from "./ArticleTree";
 import GlossaryTree from "./GlossaryTree";
 import SidebarSearch from "./SidebarSearch";
 
@@ -60,47 +59,19 @@ function NewQueryModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   );
 }
 
-function NewArticleModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    setSaving(true);
-    await createArticle({ title, body });
-    setSaving(false);
-    onCreated();
-    onClose();
-  };
-
-  return (
-    <ModalShell title="New Article" onClose={onClose}>
-      <div className="space-y-3">
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Article title" className="w-full border rounded px-3 py-2 text-sm" />
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Body (HTML)" rows={8} className="w-full border rounded px-3 py-2 text-sm" />
-        <button onClick={save} disabled={!title.trim() || saving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
-          Create
-        </button>
-      </div>
-    </ModalShell>
-  );
-}
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, isSteward, logout } = useAuth();
   const navigate = useNavigate();
   const [filter, setFilter] = useState("");
   const [queryRefresh, setQueryRefresh] = useState(0);
-  const [articleRefresh, setArticleRefresh] = useState(0);
   const [showNewQuery, setShowNewQuery] = useState(false);
-  const [showNewArticle, setShowNewArticle] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
-  // Sidebar section collapse
-  const [dbOpen, setDbOpen] = useState(true);
-  const [queryOpen, setQueryOpen] = useState(true);
-  const [articleOpen, setArticleOpen] = useState(true);
-  const [glossaryOpen, setGlossaryOpen] = useState(true);
+  // Sidebar section collapse — all collapsed by default
+  const [dbOpen, setDbOpen] = useState(false);
+  const [queryOpen, setQueryOpen] = useState(false);
+  const [glossaryOpen, setGlossaryOpen] = useState(false);
 
   return (
     <div className="flex h-screen">
@@ -217,7 +188,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </div>
 
       {showNewQuery && <NewQueryModal onClose={() => setShowNewQuery(false)} onCreated={() => setQueryRefresh((k) => k + 1)} />}
-      {showNewArticle && <NewArticleModal onClose={() => setShowNewArticle(false)} onCreated={() => setArticleRefresh((k) => k + 1)} />}
     </div>
   );
 }

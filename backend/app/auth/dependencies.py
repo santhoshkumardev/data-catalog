@@ -11,6 +11,7 @@ from app.auth.jwt import decode_and_validate_token
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
+from app.redis_client import cache_user_get, cache_user_set
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -28,10 +29,29 @@ async def _resolve_user_from_token(
     except JWTError:
         raise exc
 
+    # Check Redis cache first
+    cached = await cache_user_get(user_id)
+    if cached:
+        user = User(
+            id=uuid.UUID(cached["id"]),
+            email=cached["email"],
+            name=cached["name"],
+            role=cached["role"],
+        )
+        return user
+
     result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
     user = result.scalar_one_or_none()
     if user is None:
         raise exc
+
+    # Cache for 5 minutes
+    await cache_user_set(user_id, {
+        "id": str(user.id),
+        "email": user.email,
+        "name": user.name,
+        "role": user.role,
+    })
     return user
 
 

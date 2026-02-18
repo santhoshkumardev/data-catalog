@@ -18,8 +18,9 @@ from app.schemas.catalog import (
     SchemaPatch, SchemaOut,
     TableOut, TablePatch, TableWithContext,
 )
+from app.redis_client import cache_delete_pattern, cache_get, cache_set
 from app.services.audit import log_action
-from app.services.search_sync import sync_database, sync_column, sync_schema, sync_table
+from app.services.search_sync import sync_database_async, sync_column_async, sync_schema_async, sync_table_async
 
 router = APIRouter(prefix="/api/v1", tags=["catalog"])
 
@@ -40,6 +41,11 @@ async def list_databases(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
+    cache_key = f"list:dbs:p{page}:s{size}:q{q}:d{include_deleted}"
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
+
     stmt = select(DbConnection)
     count_stmt = select(func.count()).select_from(DbConnection)
     if not include_deleted:
@@ -80,7 +86,8 @@ async def patch_database(
     await log_action(db, "database", str(db_id), "update", current_user.id, old_data, changes)
     await db.commit()
     await db.refresh(row)
-    sync_database(row)
+    await sync_database_async(row)
+    await cache_delete_pattern("list:dbs:*")
     return row
 
 
@@ -93,6 +100,11 @@ async def list_schemas(
     include_deleted: bool = Query(False),
     db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user),
 ):
+    cache_key = f"list:schemas:{db_id}:p{page}:s{size}:d{include_deleted}"
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
+
     base = Schema.connection_id == db_id
     filters = [base] if include_deleted else [base, Schema.deleted_at.is_(None)]
     stmt = select(Schema).where(*filters)
@@ -136,7 +148,8 @@ async def patch_schema(
     await log_action(db, "schema", str(schema_id), "update", current_user.id, old_data, changes)
     await db.commit()
     await db.refresh(row)
-    sync_schema(row, db_name=_db_name)
+    await sync_schema_async(row, db_name=_db_name)
+    await cache_delete_pattern("list:schemas:*")
     return row
 
 
@@ -149,6 +162,11 @@ async def list_tables(
     include_deleted: bool = Query(False),
     db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user),
 ):
+    cache_key = f"list:tables:{schema_id}:p{page}:s{size}:q{q}:d{include_deleted}"
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
+
     filters = [Table.schema_id == schema_id]
     if not include_deleted:
         filters.append(Table.deleted_at.is_(None))
@@ -195,7 +213,8 @@ async def patch_table(
     await log_action(db, "table", str(table_id), "update", current_user.id, old_data, changes)
     await db.commit()
     await db.refresh(row)
-    sync_table(row, db_name=_db_name, schema_name=_schema_name, connection_id=_connection_id)
+    await sync_table_async(row, db_name=_db_name, schema_name=_schema_name, connection_id=_connection_id)
+    await cache_delete_pattern("list:tables:*")
     return row
 
 
@@ -250,8 +269,8 @@ async def patch_column(
     await log_action(db, "column", str(column_id), "update", current_user.id, old_data, changes)
     await db.commit()
     await db.refresh(row)
-    sync_column(row, db_name=_db_name, schema_name=_schema_name, table_name=_table_name,
-                connection_id=_connection_id, schema_id=_schema_id)
+    await sync_column_async(row, db_name=_db_name, schema_name=_schema_name, table_name=_table_name,
+                           connection_id=_connection_id, schema_id=_schema_id)
     return row
 
 

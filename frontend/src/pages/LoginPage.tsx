@@ -69,7 +69,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-lg shadow-lg p-8">
-          <h1 className="text-2xl font-bold text-center mb-1">Data Catalog v2</h1>
+          <h1 className="text-2xl font-bold text-center mb-1">Data Catalog</h1>
           <p className="text-gray-500 text-center mb-6">Sign in to your account</p>
 
           {error && <div className="bg-red-50 text-red-600 text-sm rounded p-3 mb-4">{error}</div>}

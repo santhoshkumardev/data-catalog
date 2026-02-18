@@ -1,6 +1,6 @@
 # Data Catalog
 
-An enterprise-grade metadata management and data governance platform. It provides a centralized hub for discovering, understanding, and governing data assets across multiple databases and data systems. Teams use it to browse database hierarchies, search for tables and columns, trace data lineage, enforce governance policies, collaborate through comments and documentation, and run ad-hoc queries — all from a single web interface.
+An enterprise-grade metadata management and data governance platform. It provides a centralized hub for discovering, understanding, and governing data assets across multiple databases and data systems. Teams use it to browse database hierarchies, search for tables and columns, trace data lineage, enforce governance policies, collaborate through comments and documentation, and manage saved SQL queries — all from a single web interface.
 
 ![Home Page](docs/images/home-page.png)
 
@@ -95,6 +95,22 @@ Stewards can gate metadata changes behind an approval process:
 2. A steward reviews the request and approves or rejects it with a comment
 3. The full workflow is captured in the audit log
 
+**Endorsements**
+
+Stewards can endorse data assets to signal trust and quality:
+
+- Three statuses: **endorsed** (trusted), **warned** (use with caution), and **deprecated** (avoid)
+- Warned and deprecated statuses require a comment explaining the reason
+- Visual badges appear on entity detail pages and in list views
+- Batch API for efficient bulk endorsement lookups
+
+**Data Stewardship**
+
+Assign data stewards to any entity for accountability:
+
+- Steward assignments visible on entity detail pages
+- Track who is responsible for data quality and governance
+
 **Resource-Level Permissions**
 
 Fine-grained access control at the individual entity level:
@@ -170,17 +186,7 @@ Save, organize, and share SQL queries:
 
 ![Published SQL Queries — saved query with syntax-highlighted SQL](docs/images/published-sql-queries.png)
 
-### 8. Query Runner
-
-Execute read-only SQL queries directly from the browser:
-
-- SQL editor with syntax highlighting
-- Safety guardrails: only `SELECT`, `WITH`, and `EXPLAIN` statements allowed
-- Statement timeout of 10 seconds to prevent runaway queries
-- Results limited to 1,000 rows with truncation indicator
-- Read-only transaction mode enforced at the database level
-
-### 9. AI-Powered Discovery
+### 8. AI-Powered Discovery
 
 A context-aware AI assistant helps users find relevant data:
 
@@ -190,7 +196,7 @@ A context-aware AI assistant helps users find relevant data:
 - Suggested related search queries for further exploration
 - Integrated into the dashboard search bar
 
-### 10. Usage Analytics
+### 9. Usage Analytics
 
 Track how the catalog is being used:
 
@@ -199,7 +205,7 @@ Track how the catalog is being used:
 - **Trending entities** — resources gaining traction in the past 7 days
 - Dashboard widgets showing key statistics (database count, table count, etc.)
 
-### 11. Webhooks
+### 10. Webhooks
 
 Subscribe to catalog events for external integrations:
 
@@ -209,7 +215,7 @@ Subscribe to catalog events for external integrations:
 - Delivery history with response codes and bodies
 - Enable/disable webhooks without deleting them
 
-### 12. Administration
+### 11. Administration
 
 **User Management**
 
@@ -240,7 +246,20 @@ The platform supports multiple authentication methods:
 - **Generic OIDC** — any OpenID Connect provider with automatic group-to-role mapping
 - **Local email/password** — built-in authentication with bcrypt password hashing
 
-All sessions are managed via JWT tokens with configurable expiration (default: 8 hours). Logout invalidates tokens via a Redis-backed blacklist.
+All sessions are managed via JWT tokens with configurable expiration (default: 8 hours). Logout invalidates tokens via a Redis-backed blacklist. Authenticated user records are cached in Redis for 5 minutes, eliminating a database lookup on every request; the cache is invalidated immediately on logout or role change.
+
+## Performance
+
+The application is optimized for concurrent multi-user deployments:
+
+| Optimization | Detail |
+|---|---|
+| **Multi-worker server** | Uvicorn runs 4 worker processes, parallelizing requests across CPU cores |
+| **Per-worker connection pool** | SQLAlchemy pool of 5 connections per worker (20 total), with `pool_pre_ping` to detect stale connections after fork |
+| **Redis user cache** | Authenticated user records cached for 5 minutes; invalidated on logout and role change |
+| **Redis list caches** | `GET /databases`, `GET /schemas`, `GET /tables` responses cached for 2 minutes; invalidated on any PATCH to the respective resource |
+| **Non-blocking search sync** | Meilisearch index updates run in a thread pool via `run_in_threadpool`, keeping the async event loop free |
+| **Frontend stale time** | TanStack Query stale time set to 5 minutes, reducing unnecessary refetches for stable catalog metadata |
 
 ## Documentation
 
