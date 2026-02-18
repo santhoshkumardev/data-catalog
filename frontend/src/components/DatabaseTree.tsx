@@ -89,7 +89,7 @@ export default function DatabaseTree({ filter }: { filter: string }) {
     <div className="text-sm">
       {filtered.map((d, di) => (
         <div key={d.db.id}>
-          <div className="flex items-center gap-1 px-2 py-1 hover:bg-gray-800 rounded">
+          <div className="flex items-center gap-1 px-2 py-1 hover:text-white rounded">
             <button onClick={() => toggleDb(di)} className="shrink-0">
               {d.expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </button>
@@ -104,7 +104,7 @@ export default function DatabaseTree({ filter }: { filter: string }) {
                 const ss = d.schemaStates[s.id];
                 return (
                   <div key={s.id}>
-                    <div className="flex items-center gap-1 px-2 py-1 hover:bg-gray-800 rounded">
+                    <div className="flex items-center gap-1 px-2 py-1 hover:text-white rounded">
                       <button onClick={() => toggleSchema(di, s.id)} className="shrink-0">
                         {ss?.expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                       </button>
@@ -125,7 +125,7 @@ export default function DatabaseTree({ filter }: { filter: string }) {
                             }
                           })();
                           return (
-                            <Link key={t.id} to={`/tables/${t.id}`} className={`flex items-center gap-1 px-2 py-1 hover:bg-gray-800 rounded ${t.deleted_at ? "opacity-50" : ""}`}>
+                            <Link key={t.id} to={`/tables/${t.id}`} className={`flex items-center gap-1 px-2 py-1 hover:text-white rounded ${t.deleted_at ? "opacity-50" : ""}`}>
                               {icon}
                               <span className={`truncate ${t.deleted_at ? "line-through" : ""}`}>{t.name}</span>
                               <EndorsementDot entityType="table" entityId={t.id} />

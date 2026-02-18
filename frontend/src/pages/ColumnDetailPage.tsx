@@ -39,8 +39,8 @@ export default function ColumnDetailPage() {
         items={[
           { label: "Databases", to: "/databases" },
           { label: db.name, to: `/databases/${db.id}` },
-          { label: schema.title ? `${schema.title} (${schema.name})` : schema.name, to: `/schemas/${schema.id}` },
-          { label: table.title ? `${table.title} (${table.name})` : table.name, to: `/tables/${table.id}` },
+          { label: schema.name, to: `/schemas/${schema.id}` },
+          { label: table.name, to: `/tables/${table.id}` },
           { label: column.name },
         ]}
       />

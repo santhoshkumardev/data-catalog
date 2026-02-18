@@ -65,26 +65,26 @@ export default function SidebarSearch({ filter }: { filter: string }) {
       <div className="text-xs text-gray-400 px-2 mb-1 uppercase tracking-wider">Search Results</div>
       {dbs.map((db) => (
         <div key={db.name}>
-          <Link to={db.id ? `/databases/${db.id}` : "#"} className="flex items-center gap-1 px-2 py-0.5 text-gray-300 hover:bg-gray-800 rounded">
+          <Link to={db.id ? `/databases/${db.id}` : "#"} className="flex items-center gap-1 px-2 py-0.5 text-gray-300 rounded">
             <Database size={14} className="text-blue-400" />
             <span>{db.name}</span>
           </Link>
           {db.schemas.map((s) => (
             <div key={s.id} className="ml-4">
-              <Link to={`/schemas/${s.id}`} className="flex items-center gap-1 px-2 py-0.5 hover:bg-gray-800 rounded">
+              <Link to={`/schemas/${s.id}`} className="flex items-center gap-1 px-2 py-0.5 rounded">
                 <Layers size={14} className="text-purple-400" />
                 <span>{s.name}</span>
                 {s.matched && <span className="text-[10px] bg-purple-800 text-purple-200 px-1 rounded ml-1">match</span>}
               </Link>
               {s.tables.map((t) => (
                 <div key={t.id} className="ml-4">
-                  <Link to={`/tables/${t.id}`} className="flex items-center gap-1 px-2 py-0.5 hover:bg-gray-800 rounded">
+                  <Link to={`/tables/${t.id}`} className="flex items-center gap-1 px-2 py-0.5 rounded">
                     <Table2 size={14} className="text-green-400" />
                     <span>{t.name}</span>
                     {t.matched && <span className="text-[10px] bg-green-800 text-green-200 px-1 rounded ml-1">match</span>}
                   </Link>
                   {t.columns.map((c) => (
-                    <Link key={c.id} to={`/tables/${t.id}`} className="flex items-center gap-1 ml-4 px-2 py-0.5 hover:bg-gray-800 rounded text-gray-400">
+                    <Link key={c.id} to={`/tables/${t.id}`} className="flex items-center gap-1 ml-4 px-2 py-0.5 rounded text-gray-400">
                       <Columns3 size={12} /> {c.name}
                     </Link>
                   ))}
@@ -95,17 +95,17 @@ export default function SidebarSearch({ filter }: { filter: string }) {
         </div>
       ))}
       {queries.map((q) => (
-        <Link key={q.id} to={`/queries/${q.id}`} className="flex items-center gap-1 px-2 py-0.5 hover:bg-gray-800 rounded">
+        <Link key={q.id} to={`/queries/${q.id}`} className="flex items-center gap-1 px-2 py-0.5 rounded">
           <FileCode size={14} className="text-amber-400" /> {q.name}
         </Link>
       ))}
       {articles.map((a) => (
-        <Link key={a.id} to={`/articles/${a.id}`} className="flex items-center gap-1 px-2 py-0.5 hover:bg-gray-800 rounded">
+        <Link key={a.id} to={`/articles/${a.id}`} className="flex items-center gap-1 px-2 py-0.5 rounded">
           <BookOpen size={14} className="text-indigo-400" /> {a.name}
         </Link>
       ))}
       {glossary.map((g) => (
-        <Link key={g.id} to={`/glossary/${g.id}`} className="flex items-center gap-1 px-2 py-0.5 hover:bg-gray-800 rounded">
+        <Link key={g.id} to={`/glossary/${g.id}`} className="flex items-center gap-1 px-2 py-0.5 rounded">
           <BookText size={14} className="text-teal-400" /> {g.name}
         </Link>
       ))}
