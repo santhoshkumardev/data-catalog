@@ -21,7 +21,7 @@ export default function ArticleTree({ filter, refreshKey }: { filter: string; re
   return (
     <div className="text-sm">
       {filtered.map((a) => (
-        <Link key={a.id} to={`/articles/${a.id}`} className="flex items-center gap-1 px-2 py-1 hover:bg-gray-800 rounded">
+        <Link key={a.id} to={`/articles/${a.id}`} className="flex items-center gap-1 px-2 py-1 hover:text-white rounded">
           <BookOpen size={14} className="text-indigo-400 shrink-0" />
           <span className="truncate">{a.title}</span>
         </Link>

@@ -157,15 +157,21 @@ class IngestColumn(BaseModel):
 
 class IngestTable(BaseModel):
     name: str
+    title: str | None = None
+    description: str | None = None
     row_count: int | None = None
     object_type: str = "table"
     view_definition: str | None = None
     columns: list[IngestColumn] = []
+    steward_emails: list[str] = []
 
 
 class IngestSchema(BaseModel):
     name: str
+    title: str | None = None
+    description: str | None = None
     tables: list[IngestTable] = []
+    steward_emails: list[str] = []
 
 
 class IngestBatchPayload(BaseModel):

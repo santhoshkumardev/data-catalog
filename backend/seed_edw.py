@@ -88,6 +88,20 @@ def build_column(item: dict) -> dict:
     return col
 
 
+def get_steward_emails(item: dict) -> list:
+    """Extract steward emails from a record."""
+    emails = []
+    user_email = (item.get("steward:user") or "").strip()
+    if user_email:
+        for em in user_email.split(";"):
+            emails.append(em + "@akamai.com")
+    group_email = (item.get("steward:groupprofile") or "").strip()
+    if group_email:
+        for em in group_email.split(";"):
+            emails.append(em + "@akamai.com")
+    return emails
+
+
 def build_table(table_item: dict, table_name: str, col_items: list) -> dict:
     """Convert a table record + its columns to ingest API format."""
     tbl = {"name": table_name}
@@ -97,6 +111,9 @@ def build_table(table_item: dict, table_name: str, col_items: list) -> dict:
         tbl["title"] = title
     if desc:
         tbl["description"] = desc
+    steward_emails = get_steward_emails(table_item) if table_item else []
+    if steward_emails:
+        tbl["steward_emails"] = steward_emails
     tbl["columns"] = [build_column(c) for c in col_items]
     return tbl
 
@@ -148,12 +165,15 @@ def main():
         """Send a single batch of tables for a schema."""
         schema_desc_val = strip_html(schema_item.get("description", "")) if schema_item else ""
         schema_title_val = schema_item.get("title", "") if schema_item else ""
+        schema_stewards = get_steward_emails(schema_item) if schema_item else []
 
         schema_payload = {"name": schema_name, "tables": tbl_batch}
         if schema_desc_val:
             schema_payload["description"] = schema_desc_val
         if schema_title_val:
             schema_payload["title"] = schema_title_val
+        if schema_stewards:
+            schema_payload["steward_emails"] = schema_stewards
 
         payload = {
             "database": {

@@ -60,7 +60,7 @@ export default function SchemaDetailPage() {
 
   return (
     <div>
-      <Breadcrumb items={[{ label: "Databases", to: "/databases" }, { label: db.name, to: `/databases/${db.id}` }, { label: schemaDisplayName }]} />
+      <Breadcrumb items={[{ label: "Databases", to: "/databases" }, { label: db.name, to: `/databases/${db.id}` }, { label: schema.name }]} />
 
       {/* Header card */}
       <div className="bg-white rounded-lg border p-6 mb-6">
@@ -117,6 +117,7 @@ export default function SchemaDetailPage() {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="text-left px-4 py-2 font-medium text-gray-600">Name</th>
+                  <th className="text-left px-4 py-2 font-medium text-gray-600">Title</th>
                   <th className="text-left px-4 py-2 font-medium text-gray-600">Type</th>
                   <th className="text-right px-4 py-2 font-medium text-gray-600">Rows</th>
                 </tr>
@@ -124,7 +125,7 @@ export default function SchemaDetailPage() {
               <tbody>
                 {tables.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="px-4 py-6 text-center text-gray-400 text-sm">
+                    <td colSpan={4} className="px-4 py-6 text-center text-gray-400 text-sm">
                       {searchQuery ? "No tables match your search." : "No tables found."}
                     </td>
                   </tr>
@@ -152,7 +153,7 @@ export default function SchemaDetailPage() {
                         <div className="flex items-center gap-2">
                           {icon}
                           <Link to={`/tables/${t.id}`} className={`font-medium text-blue-600 hover:underline ${isDeleted ? "line-through" : ""}`}>
-                            {t.title ? `${t.title} (${t.name})` : t.name}
+                            {t.name}
                           </Link>
                           {!isDeleted && <EndorsementBadge entityType="table" entityId={t.id} />}
                           {isDeleted && (
@@ -162,6 +163,7 @@ export default function SchemaDetailPage() {
                           )}
                         </div>
                       </td>
+                      <td className="px-4 py-2 text-gray-600 text-sm">{t.title || ""}</td>
                       <td className="px-4 py-2">{badge}</td>
                       <td className="px-4 py-2 text-right text-gray-400 text-xs">
                         {t.row_count != null && !isDeleted ? t.row_count.toLocaleString() : ""}

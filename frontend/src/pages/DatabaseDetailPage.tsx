@@ -118,12 +118,13 @@ export default function DatabaseDetailPage() {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="text-left px-4 py-2 font-medium text-gray-600">Name</th>
+                  <th className="text-left px-4 py-2 font-medium text-gray-600">Title</th>
                 </tr>
               </thead>
               <tbody>
                 {schemas.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-6 text-center text-gray-400 text-sm">
+                    <td colSpan={2} className="px-4 py-6 text-center text-gray-400 text-sm">
                       {searchQuery ? "No schemas match your search." : "No schemas found."}
                     </td>
                   </tr>
@@ -135,7 +136,7 @@ export default function DatabaseDetailPage() {
                         <div className="flex items-center gap-2">
                           <Layers size={15} className="text-purple-500" />
                           <Link to={`/schemas/${s.id}`} className={`font-medium text-blue-600 hover:underline ${isDeleted ? "line-through" : ""}`}>
-                            {s.title ? `${s.title} (${s.name})` : s.name}
+                            {s.name}
                           </Link>
                           {!isDeleted && <EndorsementBadge entityType="schema" entityId={s.id} />}
                           {isDeleted && (
@@ -145,6 +146,7 @@ export default function DatabaseDetailPage() {
                           )}
                         </div>
                       </td>
+                      <td className="px-4 py-2 text-gray-600 text-sm">{s.title || ""}</td>
                     </tr>
                   );
                 })}

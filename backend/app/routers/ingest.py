@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import require_ingest_api_key
 from app.database import get_db
 from app.models.catalog import Column, DbConnection, Schema, Table, TableLineage
+from app.models.governance import ResourcePermission
+from app.models.user import User
 from app.schemas.catalog import IngestBatchPayload, IngestBatchResult, LineageEdgeCreate
 from app.services.search_sync import sync_column, sync_database, sync_schema, sync_table
 
@@ -18,6 +20,31 @@ router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"], dependencies=[Depen
 MAX_SCHEMAS = 100
 MAX_TABLES_PER_SCHEMA = 500
 MAX_COLUMNS_PER_TABLE = 1000
+
+
+async def _assign_stewards(db: AsyncSession, entity_type: str, entity_id: str, emails: list[str]):
+    """Assign stewards by email. Skips unknown emails and duplicates silently."""
+    for email in emails:
+        email = email.strip()
+        if not email:
+            continue
+        user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+        if user is None:
+            continue
+        existing = (await db.execute(
+            select(ResourcePermission).where(
+                ResourcePermission.user_id == user.id,
+                ResourcePermission.entity_type == entity_type,
+                ResourcePermission.entity_id == str(entity_id),
+                ResourcePermission.role == "steward",
+            )
+        )).scalar_one_or_none()
+        if existing:
+            continue
+        db.add(ResourcePermission(
+            user_id=user.id, entity_type=entity_type,
+            entity_id=str(entity_id), role="steward",
+        ))
 
 
 @router.post("/batch", response_model=IngestBatchResult)
@@ -44,12 +71,22 @@ async def ingest_batch(payload: IngestBatchPayload, db: AsyncSession = Depends(g
         result = await db.execute(select(Schema).where(Schema.connection_id == db_conn.id, Schema.name == schema_payload.name))
         schema = result.scalar_one_or_none()
         if schema is None:
-            schema = Schema(id=uuid.uuid4(), connection_id=db_conn.id, name=schema_payload.name)
+            schema = Schema(
+                id=uuid.uuid4(), connection_id=db_conn.id, name=schema_payload.name,
+                title=schema_payload.title, description=schema_payload.description,
+            )
             db.add(schema)
         else:
+            if schema_payload.title is not None:
+                schema.title = schema_payload.title
+            if schema_payload.description is not None:
+                schema.description = schema_payload.description
             schema.deleted_at = None
         schemas_upserted += 1
         await db.flush()
+
+        if schema_payload.steward_emails:
+            await _assign_stewards(db, "schema", schema.id, schema_payload.steward_emails)
 
         for table_payload in schema_payload.tables:
             if len(table_payload.columns) > MAX_COLUMNS_PER_TABLE:
@@ -59,11 +96,16 @@ async def ingest_batch(payload: IngestBatchPayload, db: AsyncSession = Depends(g
             if table is None:
                 table = Table(
                     id=uuid.uuid4(), schema_id=schema.id, name=table_payload.name,
+                    title=table_payload.title, description=table_payload.description,
                     row_count=table_payload.row_count, object_type=table_payload.object_type,
                     view_definition=table_payload.view_definition,
                 )
                 db.add(table)
             else:
+                if table_payload.title is not None:
+                    table.title = table_payload.title
+                if table_payload.description is not None:
+                    table.description = table_payload.description
                 if table_payload.row_count is not None:
                     table.row_count = table_payload.row_count
                 table.object_type = table_payload.object_type
@@ -71,6 +113,9 @@ async def ingest_batch(payload: IngestBatchPayload, db: AsyncSession = Depends(g
                 table.deleted_at = None
             tables_upserted += 1
             await db.flush()
+
+            if table_payload.steward_emails:
+                await _assign_stewards(db, "table", table.id, table_payload.steward_emails)
 
             existing_cols_result = await db.execute(select(Column).where(Column.table_id == table.id))
             existing_cols = {c.name: c for c in existing_cols_result.scalars().all()}
